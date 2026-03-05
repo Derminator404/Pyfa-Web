@@ -1,5 +1,5 @@
-# main.py
 from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi.middleware.cors import CORSMiddleware  # <-- Diese Zeile hat wahrscheinlich gefehlt!
 from pydantic import BaseModel
 from typing import List, Optional
 import sqlite3
@@ -17,15 +17,15 @@ app = FastAPI(
     version="0.4.0" 
 )
 
-# --- NEU: CORS Konfiguration ---
-# Wir erlauben dem Frontend (localhost:3000), auf die API zuzugreifen
+# --- CORS Konfiguration ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.1.103:3000"], 
     allow_credentials=True,
-    allow_methods=["*"], # Erlaubt alle Methoden (GET, POST, etc.)
-    allow_headers=["*"], # Erlaubt alle Header
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+# -------------------------------
 
 # Binde den Debug-Router in die Haupt-App ein
 app.include_router(debug_router)
@@ -52,28 +52,35 @@ class SimulationResult(BaseModel):
 # ---------------------------------------------------------
 
 @app.get("/ships", response_model=List[Ship], tags=["Ships"])
-def get_ships(db: sqlite3.Connection = Depends(get_db)):
+def get_ships(search: Optional[str] = Query(None, description="Suchbegriff für den Schiffsnamen"), db: sqlite3.Connection = Depends(get_db)):
     """
     Holt eine Liste von Schiffen aus der Datenbank.
-    Nutzt g.name anstelle von g.groupName aufgrund der Pyfa-Datenbankstruktur.
+    Wenn ein 'search' Parameter übergeben wird, wird gezielt in der Datenbank gesucht.
     """
     query = """
         SELECT t.typeID as id, t.typeName as name, g.name as group_name
         FROM invtypes t
         JOIN invgroups g ON t.groupID = g.groupID
         WHERE g.categoryID = 6 AND t.published = 1
-        ORDER BY t.typeName
-        LIMIT 100; -- Limit für schnellere Ladezeiten beim Testen
     """
+    params = []
+    
+    # Wenn ein Suchbegriff da ist, filtern wir direkt in SQL
+    if search:
+        query += " AND t.typeName LIKE ?"
+        params.append(f"%{search}%")
+        
+    # Wir begrenzen das Ergebnis auf 50, damit die API immer blitzschnell bleibt
+    query += " ORDER BY t.typeName LIMIT 50;"
+    
     try:
         cursor = db.cursor()
-        cursor.execute(query)
+        cursor.execute(query, params)
         rows = cursor.fetchall()
-        
-        # Die SQLite Row-Factory erlaubt uns den Zugriff über die Alias-Namen (as id, as name, etc.)
         return [{"id": row["id"], "name": row["name"], "group_name": row["group_name"]} for row in rows]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Datenbankfehler: {str(e)}")
+
 @app.get("/ships/{ship_id}", response_model=Ship, tags=["Ships"])
 def get_ship_by_id(ship_id: int, db: sqlite3.Connection = Depends(get_db)):
     """
