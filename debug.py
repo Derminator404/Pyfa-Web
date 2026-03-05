@@ -46,3 +46,17 @@ def get_table_columns(table_name: str, db: sqlite3.Connection = Depends(get_db))
         "table": table_name, 
         "columns": columns
     }
+
+@router.get("/raw-attributes/{ship_id}")
+def get_raw_attributes(ship_id: int, db: sqlite3.Connection = Depends(get_db)):
+    """Holt ALLE rohen Attribute eines Schiffes direkt aus der dgmtypeattribs Tabelle."""
+    query = "SELECT attributeID, value FROM dgmtypeattribs WHERE typeID = ?"
+    try:
+        cursor = db.cursor()
+        cursor.execute(query, (ship_id,))
+        rows = cursor.fetchall()
+        
+        # Wandelt die SQLite-Rows direkt in eine saubere JSON-Liste um
+        return [{"attributeID": row["attributeID"], "value": row["value"]} for row in rows]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Datenbankfehler: {str(e)}")
