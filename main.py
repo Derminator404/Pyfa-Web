@@ -17,6 +17,16 @@ app = FastAPI(
     version="0.4.0" 
 )
 
+# --- NEU: CORS Konfiguration ---
+# Wir erlauben dem Frontend (localhost:3000), auf die API zuzugreifen
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"], # Erlaubt alle Methoden (GET, POST, etc.)
+    allow_headers=["*"], # Erlaubt alle Header
+)
+
 # Binde den Debug-Router in die Haupt-App ein
 app.include_router(debug_router)
 
