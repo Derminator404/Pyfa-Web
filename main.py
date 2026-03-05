@@ -81,11 +81,12 @@ def get_ships(search: Optional[str] = Query(None, description="Suchbegriff für 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Datenbankfehler: {str(e)}")
 
-@app.get("/ships/{ship_id}", response_model=Ship, tags=["Ships"])
+# ... (Deine Imports und der /ships Endpunkt für die Suche bleiben gleich)
+
+@app.get("/ships/{ship_id}", tags=["Ships"])
 def get_ship_by_id(ship_id: int, db: sqlite3.Connection = Depends(get_db)):
     """
-    Gibt die Details eines spezifischen Schiffes anhand seiner ID (typeID) zurück.
-    Wird benötigt, wenn ein Nutzer im Frontend ein Schiff zum Fitten auswählt.
+    Gibt NUR die Basis-Details eines spezifischen Schiffes zurück.
     """
     query = """
         SELECT t.typeID as id, t.typeName as name, g.name as group_name
@@ -95,18 +96,53 @@ def get_ship_by_id(ship_id: int, db: sqlite3.Connection = Depends(get_db)):
     """
     try:
         cursor = db.cursor()
-        # Wir übergeben die ship_id sicher als Parameter (Tuples in Python enden mit Komma)
         cursor.execute(query, (ship_id,))
-        row = cursor.fetchone() # fetchone() holt genau einen Eintrag (oder None)
-        
+        row = cursor.fetchone()
         if row is None:
-            # Wenn die ID nicht existiert (oder kein Schiff ist), werfen wir einen 404 Fehler
-            raise HTTPException(status_code=404, detail=f"Schiff mit ID {ship_id} nicht gefunden")
-            
+            raise HTTPException(status_code=404, detail="Schiff nicht gefunden")
         return {"id": row["id"], "name": row["name"], "group_name": row["group_name"]}
-    
-    except HTTPException:
-        raise # Wir leiten den 404 Fehler einfach weiter
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/ships/{ship_id}/attributes", tags=["Ships", "Attributes"])
+def get_ship_attributes(ship_id: int, db: sqlite3.Connection = Depends(get_db)):
+    """
+    Gibt NUR die Fitting-Werte (Attribute) eines Schiffes zurück.
+    Kategorie 1: Slots, Capacitor UND Calibration.
+    """
+    # NEU: ID 1132 (Calibration) in der SQL-Abfrage hinzugefügt
+    query = """
+        SELECT attributeID, value
+        FROM dgmtypeattribs
+        WHERE typeID = ? AND attributeID IN (11, 12, 13, 14, 48, 55, 482, 1132, 1137)
+    """
+    try:
+        cursor = db.cursor()
+        cursor.execute(query, (ship_id,))
+        attributes = cursor.fetchall()
+        
+        # Standardwerte (inkl. calibration)
+        data = {
+            "cpu": 0.0, "powergrid": 0.0, "calibration": 0,
+            "high_slots": 0, "mid_slots": 0, "low_slots": 0, "rig_slots": 0,
+            "cap_capacity": 0.0, "cap_recharge": 0.0
+        }
+        
+        for attr in attributes:
+            attr_id = attr["attributeID"]
+            val = attr["value"]
+            if attr_id == 48: data["cpu"] = val
+            elif attr_id == 11: data["powergrid"] = val
+            elif attr_id == 1132: data["calibration"] = int(val)  # NEU
+            elif attr_id == 14: data["high_slots"] = int(val)
+            elif attr_id == 13: data["mid_slots"] = int(val)
+            elif attr_id == 12: data["low_slots"] = int(val)
+            elif attr_id == 1137: data["rig_slots"] = int(val)
+            elif attr_id == 482: data["cap_capacity"] = val
+            elif attr_id == 55: data["cap_recharge"] = val
+            
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Datenbankfehler: {str(e)}")
 
