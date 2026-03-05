@@ -6,7 +6,9 @@ SHIP_ATTRIBUTES_MAP = {
     # --- Fitting ---
     48: "cpu", 11: "powergrid", 1132: "calibration",
     14: "high_slots", 13: "mid_slots", 12: "low_slots", 1137: "rig_slots",
-    
+    102: "turret_slots",   # NEU: Turrets
+    101: "launcher_slots", # NEU: Launchers
+
     # --- Capacitor ---
     482: "cap_capacity", 55: "cap_recharge",
     
