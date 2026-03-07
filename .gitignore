@@ -10,6 +10,8 @@ env/
 # Datenbanken (lokale SQLite Dateien sollten meist nicht ins Repo)
 #*.db
 #*.sqlite3
+staticdata/
+.staticdata/
 
 # IDE Einstellungen (optional)
 .vscode/

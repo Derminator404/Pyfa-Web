@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-const API_BASE_URL = "http://192.168.1.103:8080";
+const API_BASE_URL = "http://localhost:8080";
 
 // --- INTERFACE ---
 interface Ship {
