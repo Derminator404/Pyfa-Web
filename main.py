@@ -58,9 +58,9 @@ class FitSimulationRequest(BaseModel):
 # NEU: Modul-Liste anfragen
 @app.get("/modules", tags=["Datenbank"])
 def get_all_modules():
-    from services.simulator import eos_sim
-    # Schickt die fertig gecachete Liste ans Frontend!
-    return eos_sim.all_modules
+    # Wir importieren den Cache aus der neuen Datei!
+    from services.modules import MODULE_CACHE
+    return MODULE_CACHE
 
 
 @app.post("/simulate", tags=["Simulation"])

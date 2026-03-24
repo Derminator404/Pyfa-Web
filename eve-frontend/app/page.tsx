@@ -70,12 +70,67 @@ const describeArc = (x: number, y: number, innerRadius: number, outerRadius: num
 const CollapsiblePanel = ({ title, children, defaultOpen = true }: any) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
-    <div className="bg-gray-800/80 rounded border border-gray-700 shadow-lg overflow-hidden transition-all duration-300">
+    <div className="bg-gray-800/80 rounded border border-gray-700 shadow-lg overflow-hidden transition-all duration-300 mb-3 shrink-0">
       <button onClick={() => setIsOpen(!isOpen)} className="w-full flex justify-between items-center p-3 bg-gray-800 hover:bg-gray-700 transition-colors focus:outline-none border-b border-gray-700">
         <h3 className="text-sm font-bold text-gray-200">{title}</h3>
         <span className={`text-gray-400 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
       </button>
       {isOpen && <div className="p-3 flex flex-col gap-2 bg-gray-900/40">{children}</div>}
+    </div>
+  );
+};
+
+// --- VERSCHACHTELTER ORDNER ---
+const RecursiveFolder = ({ name, folderData, isSearching, openFolders, toggleFolder, equipModule, pathKey }: any) => {
+  const isOpen = isSearching || openFolders[pathKey];
+
+  const getCount = (fd: any): number => {
+    let count = fd._items.length;
+    for (const key in fd._subfolders) count += getCount(fd._subfolders[key]);
+    return count;
+  };
+  const totalCount = getCount(folderData);
+
+  if (totalCount === 0) return null;
+
+  return (
+    <div className="mb-1 ml-1">
+      <button
+        onClick={() => toggleFolder(pathKey)}
+        className="w-full text-left p-1.5 hover:bg-gray-700 rounded text-[11px] font-bold text-gray-300 flex justify-between items-center transition-colors border-l-2 border-transparent hover:border-blue-500"
+      >
+        <span className="truncate pr-2">📁 {name}</span>
+        <span className="text-gray-500 text-[9px]">{totalCount}</span>
+      </button>
+
+      {isOpen && (
+        <div className="pl-1 mt-1 flex flex-col gap-1 border-l border-gray-700 ml-2">
+          {Object.keys(folderData._subfolders).sort().map(subName => (
+            <RecursiveFolder
+              key={subName}
+              name={subName}
+              folderData={folderData._subfolders[subName]}
+              isSearching={isSearching}
+              openFolders={openFolders}
+              toggleFolder={toggleFolder}
+              equipModule={equipModule}
+              pathKey={`${pathKey}-${subName}`}
+            />
+          ))}
+          {folderData._items.map((module: any) => (
+            <div
+              key={module.id}
+              onClick={() => equipModule(module)}
+              className="flex items-center gap-2 p-1.5 bg-gray-900/30 hover:bg-blue-900/40 rounded cursor-pointer group"
+            >
+              <div className="text-[11px] group-hover:scale-110 transition-transform">
+                {getModuleIcon(module.type, module.name)}
+              </div>
+              <p className="text-[10px] font-semibold text-gray-400 group-hover:text-blue-300 truncate">{module.name}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -138,6 +193,7 @@ const SvgHardpointGroup = ({ activeCount, centerAngle, radius, activeFill, activ
   );
 };
 
+// --- STATS COMPONENTS (Diese haben im letzten Snippet gefehlt!) ---
 const StatArc = ({ startAngle, endAngle, radius, strokeClass, text, textColorClass }: any) => {
   const start = polarToCartesian(300, 300, radius, startAngle);
   const end = polarToCartesian(300, 300, radius, endAngle);
@@ -198,9 +254,8 @@ export default function Home() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeSlot, setActiveSlot] = useState<{ type: string, index: number } | null>(null);
-  const [viewMode, setViewMode] = useState<"wheel" | "list">("wheel");
+  const [viewMode, setViewMode] = useState<"wheel" | "list">("list"); 
 
-  // State für die einklappbaren Ordner in der linken Liste
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -338,16 +393,15 @@ export default function Home() {
   const hullKin = simStats ? simStats.resists.hull.kinetic : selectedShip?.hull_kin_res || 0;
   const hullExpl = simStats ? simStats.resists.hull.explosive : selectedShip?.hull_expl_res || 0;
 
-
-  // --- PYFA LIST RENDERER ---
+  // --- KOMPAKTERE LISTENDARSTELLUNG FÜR DIE MITTE ---
   const renderListCategory = (title: string, type: string, maxSlots?: number) => {
     if (!maxSlots || maxSlots === 0) return null;
     return (
-      <div className="mb-6">
-        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest border-b border-gray-700 pb-1 mb-2">
-          {title} <span className="text-gray-600 text-xs ml-2">({fittedModules[type].filter((x:any) => x).length}/{maxSlots})</span>
+      <div className="flex flex-col min-h-0 flex-shrink">
+        <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-700 pb-1 mb-1 shrink-0">
+          {title} <span className="text-gray-600 text-[10px] ml-2">({fittedModules[type].filter((x:any) => x).length}/{maxSlots})</span>
         </h3>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col flex-1 min-h-0 justify-evenly gap-[2px]">
           {Array.from({ length: maxSlots }).map((_, i) => {
             const moduleId = fittedModules[type][i];
             const mod = moduleId ? allModules.find(m => m.id === moduleId) : null;
@@ -355,18 +409,18 @@ export default function Home() {
               <div 
                 key={i}
                 onClick={() => !mod && handleSlotClick(type, i)}
-                className={`flex items-center justify-between p-2 rounded border ${mod ? 'bg-gray-800 border-gray-600' : 'bg-gray-900/50 border-gray-800 border-dashed hover:border-blue-500 cursor-pointer'} transition-colors`}
+                className={`flex items-center justify-between px-2 py-[2px] rounded border ${mod ? 'bg-gray-800 border-gray-600' : 'bg-gray-900/50 border-gray-800 border-dashed hover:border-blue-500 cursor-pointer'} transition-colors overflow-hidden shrink min-h-[26px]`}
               >
-                <div className="flex items-center gap-3">
-                   <div className="w-8 h-8 bg-gray-900 rounded flex items-center justify-center text-sm shadow-inner border border-gray-700">
+                <div className="flex items-center gap-2 overflow-hidden">
+                   <div className="w-5 h-5 shrink-0 bg-gray-900 rounded flex items-center justify-center text-[10px] shadow-inner border border-gray-700">
                      {mod ? getModuleIcon(mod.type, mod.name) : '+'}
                    </div>
-                   <span className={`text-sm ${mod ? 'text-gray-200 font-bold' : 'text-gray-600 italic'}`}>
+                   <span className={`text-[11px] truncate ${mod ? 'text-gray-200 font-bold' : 'text-gray-600 italic'}`}>
                      {mod ? mod.name : `Leerer Slot`}
                    </span>
                 </div>
                 {mod && (
-                  <button onClick={(e) => { e.stopPropagation(); unequipModule(type, i); }} className="text-red-500 hover:text-red-400 p-2 hover:bg-red-500/20 rounded transition-colors" title="Modul ausbauen">✖</button>
+                  <button onClick={(e) => { e.stopPropagation(); unequipModule(type, i); }} className="text-red-500 hover:text-red-400 px-2 py-0.5 hover:bg-red-500/20 rounded transition-colors shrink-0 text-xs" title="Modul ausbauen">✖</button>
                 )}
               </div>
             );
@@ -376,20 +430,33 @@ export default function Home() {
     );
   };
 
-  // --- BERECHNETE, GRUPPIERTE MODULE FÜR DIE LINKE SEITENLEISTE ---
   const groupedModules = useMemo(() => {
     const isSearching = moduleSearch.trim().length > 0;
     const filtered = isSearching 
       ? allModules.filter(m => m.name.toLowerCase().includes(moduleSearch.toLowerCase()) || m.group.toLowerCase().includes(moduleSearch.toLowerCase()))
       : allModules;
 
-    const grouped: any = { high: {}, mid: {}, low: {}, rig: {} };
-    
+    const grouped: any = { 
+      high: { _subfolders: {}, _items: [] }, 
+      mid: { _subfolders: {}, _items: [] }, 
+      low: { _subfolders: {}, _items: [] }, 
+      rig: { _subfolders: {}, _items: [] } 
+    };
+
     filtered.forEach(mod => {
-      if (grouped[mod.type]) {
-        if (!grouped[mod.type][mod.group]) grouped[mod.type][mod.group] = [];
-        grouped[mod.type][mod.group].push(mod);
-      }
+      if (!mod.group) mod.group = "Unsortiert";
+      const pathParts = mod.group.split(' > ');
+      
+      let currentFolder = grouped[mod.type];
+      if (!currentFolder) return; 
+
+      pathParts.forEach((part: string) => {
+        if (!currentFolder._subfolders[part]) {
+          currentFolder._subfolders[part] = { _subfolders: {}, _items: [] };
+        }
+        currentFolder = currentFolder._subfolders[part];
+      });
+      currentFolder._items.push(mod);
     });
 
     return { grouped, isSearching };
@@ -400,12 +467,14 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen p-4 md:p-8 bg-gray-900 text-gray-100 font-sans selection:bg-blue-500/30">
-      <div className="max-w-[1600px] mx-auto relative">
+    <main className="min-h-screen p-4 md:p-8 bg-gray-900 text-gray-100 font-sans selection:bg-blue-500/30 overflow-hidden">
+      <div className="max-w-[1600px] mx-auto relative h-full">
 
         {selectedShip ? (
-          <div className="animate-fade-in">
-            <div className="flex justify-between items-center mb-6">
+          <div className="animate-fade-in flex flex-col h-[calc(100vh-4rem)]">
+            
+            {/* Top Bar Navigation */}
+            <div className="flex justify-between items-center mb-4 shrink-0">
               <button onClick={() => setSelectedShip(null)} className="text-blue-400 hover:text-blue-300 flex items-center gap-2 font-semibold text-sm uppercase tracking-widest">
                 ← Anderes Schiff suchen
               </button>
@@ -416,11 +485,12 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="flex flex-col xl:flex-row gap-6 justify-between items-start">
+            {/* 3 Columns Layout */}
+            <div className="flex flex-col xl:flex-row gap-6 justify-between items-stretch flex-grow overflow-hidden">
               
-              {/* === LINKE SEITE: MODULE BROWSER (Akkordeon) === */}
-              <div className="w-full xl:w-1/4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-xl overflow-hidden flex flex-col h-[75vh] sticky top-8">
-                <div className="p-4 bg-gray-800 border-b border-gray-700">
+              {/* === LINKE SEITE: MODULE BROWSER === */}
+              <div className="w-full xl:w-1/4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-xl flex flex-col h-full overflow-hidden">
+                <div className="p-4 bg-gray-800 border-b border-gray-700 shrink-0">
                   <h2 className="text-sm font-bold text-gray-200 uppercase tracking-widest mb-3">Hardware ({allModules.length})</h2>
                   <input 
                     type="text" 
@@ -435,50 +505,48 @@ export default function Home() {
                   {allModules.length === 0 && <p className="text-gray-500 text-center text-xs mt-4">Lade EVE Module...</p>}
                   
                   {['high', 'mid', 'low', 'rig'].map(slotType => {
-                    const groups = groupedModules.grouped[slotType];
-                    if (Object.keys(groups).length === 0) return null;
+                    const slotData = groupedModules.grouped[slotType];
+                    if (!slotData) return null;
+
+                    const getCount = (fd: any): number => {
+                      let count = fd._items.length;
+                      for (const key in fd._subfolders) count += getCount(fd._subfolders[key]);
+                      return count;
+                    };
+                    const totalSlotCount = getCount(slotData);
+
+                    if (totalSlotCount === 0) return null;
 
                     return (
                       <div key={slotType} className="mb-4">
                         <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-700 pb-1 mb-2 ml-1">
-                          {slotType.toUpperCase()} SLOTS
+                          {slotType.toUpperCase()} SLOTS ({totalSlotCount})
                         </div>
                         
-                        {Object.keys(groups).sort().map(groupName => {
-                          const folderKey = `${slotType}-${groupName}`;
-                          // Wenn gesucht wird, klappen wir automatisch auf
-                          const isOpen = groupedModules.isSearching || openFolders[folderKey];
-                          const modsInGroup = groups[groupName];
-
-                          return (
-                            <div key={folderKey} className="mb-1">
-                              <button 
-                                onClick={() => toggleFolder(folderKey)}
-                                className="w-full text-left p-2 bg-gray-800 hover:bg-gray-700 rounded text-xs font-bold text-gray-300 flex justify-between items-center transition-colors"
-                              >
-                                <span className="truncate pr-2">📁 {groupName}</span>
-                                <span className="text-gray-500 text-[10px]">{modsInGroup.length}</span>
-                              </button>
-                              
-                              {isOpen && (
-                                <div className="pl-3 mt-1 flex flex-col gap-1 border-l border-gray-700 ml-3">
-                                  {modsInGroup.map((module: any) => (
-                                    <div 
-                                      key={module.id} 
-                                      onClick={() => equipModule(module)}
-                                      className="flex items-center gap-2 p-1.5 bg-gray-900/30 hover:bg-blue-900/40 rounded cursor-pointer group"
-                                    >
-                                      <div className="text-xs group-hover:scale-110 transition-transform">
-                                        {getModuleIcon(module.type, module.name)}
-                                      </div>
-                                      <p className="text-[11px] font-semibold text-gray-400 group-hover:text-blue-300 truncate">{module.name}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                        {Object.keys(slotData._subfolders).sort().map(groupName => (
+                          <RecursiveFolder
+                            key={groupName}
+                            name={groupName}
+                            folderData={slotData._subfolders[groupName]}
+                            isSearching={groupedModules.isSearching}
+                            openFolders={openFolders}
+                            toggleFolder={toggleFolder}
+                            equipModule={equipModule}
+                            pathKey={`${slotType}-${groupName}`}
+                          />
+                        ))}
+                        {slotData._items.map((module: any) => (
+                          <div
+                            key={module.id}
+                            onClick={() => equipModule(module)}
+                            className="flex items-center gap-2 p-1.5 bg-gray-900/30 hover:bg-blue-900/40 rounded cursor-pointer group ml-1"
+                          >
+                            <div className="text-xs group-hover:scale-110 transition-transform">
+                              {getModuleIcon(module.type, module.name)}
                             </div>
-                          );
-                        })}
+                            <p className="text-[11px] font-semibold text-gray-400 group-hover:text-blue-300 truncate">{module.name}</p>
+                          </div>
+                        ))}
                       </div>
                     );
                   })}
@@ -487,10 +555,10 @@ export default function Home() {
 
 
               {/* === MITTE: FITTING ANSICHT === */}
-              <div className="w-full xl:w-2/4 flex justify-center">
+              <div className="w-full xl:w-2/4 flex justify-center h-full overflow-hidden">
                 
                 {viewMode === 'wheel' ? (
-                  <div className="relative w-[360px] h-[360px] md:w-[600px] md:h-[600px] flex-shrink-0 bg-gray-900 rounded-full shadow-[0_0_80px_rgba(0,0,0,0.8)] border border-gray-800 animate-fade-in">
+                  <div className="relative w-[360px] h-[360px] md:w-[600px] md:h-[600px] flex-shrink-0 bg-gray-900 rounded-full shadow-[0_0_80px_rgba(0,0,0,0.8)] border border-gray-800 animate-fade-in self-center">
                     <div className="absolute inset-0 m-auto w-32 h-32 md:w-48 md:h-48 bg-gray-800/80 rounded-full border border-gray-600 flex flex-col items-center justify-center shadow-lg z-10">
                       <h2 className="text-lg md:text-2xl font-bold text-white text-center leading-tight px-2 drop-shadow-md">{selectedShip.name}</h2>
                       <p className="text-[10px] md:text-xs text-blue-400 mt-1 uppercase tracking-widest">{selectedShip.group_name}</p>
@@ -515,94 +583,98 @@ export default function Home() {
                     </svg>
                   </div>
                 ) : (
-                  <div className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-6 animate-fade-in shadow-xl">
-                    <div className="flex justify-between items-start mb-6 border-b border-gray-700 pb-4">
+                  <div className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4 animate-fade-in shadow-xl flex flex-col h-full overflow-hidden">
+                    <div className="flex justify-between items-start mb-2 border-b border-gray-700 pb-2 shrink-0">
                       <div>
                         <h2 className="text-3xl font-black text-white tracking-wide">{selectedShip.name}</h2>
                         <p className="text-blue-400 text-sm uppercase tracking-widest">{selectedShip.group_name}</p>
                         {isSimulating && <p className="text-green-400 text-[10px] mt-1 animate-pulse uppercase tracking-widest">Simulating...</p>}
                       </div>
-                      <div className="text-right bg-gray-900 p-3 rounded border border-gray-700">
-                        <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Ressourcen</div>
-                        <div className="text-sm text-gray-300">CPU: <span className={`font-mono ${cpuUsed > (selectedShip.cpu || 0) ? 'text-red-500' : 'text-blue-400'}`}>{cpuUsed.toFixed(1)} / {selectedShip.cpu} tf</span></div>
-                        <div className="text-sm text-gray-300 mt-1">PG: <span className={`font-mono ${pgUsed > (selectedShip.powergrid || 0) ? 'text-red-500' : 'text-red-400'}`}>{pgUsed.toFixed(1)} / {selectedShip.powergrid} MW</span></div>
+                      <div className="text-right bg-gray-900 p-2 rounded border border-gray-700">
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Ressourcen</div>
+                        <div className="text-xs text-gray-300">CPU: <span className={`font-mono ${cpuUsed > (selectedShip.cpu || 0) ? 'text-red-500' : 'text-blue-400'}`}>{cpuUsed.toFixed(1)} / {selectedShip.cpu}</span></div>
+                        <div className="text-xs text-gray-300 mt-1">PG: <span className={`font-mono ${pgUsed > (selectedShip.powergrid || 0) ? 'text-red-500' : 'text-red-400'}`}>{pgUsed.toFixed(1)} / {selectedShip.powergrid}</span></div>
                       </div>
                     </div>
                     
-                    {renderListCategory("High Slots", "high", selectedShip.high_slots)}
-                    {renderListCategory("Mid Slots", "mid", selectedShip.mid_slots)}
-                    {renderListCategory("Low Slots", "low", selectedShip.low_slots)}
-                    {renderListCategory("Rig Slots", "rig", selectedShip.rig_slots)}
+                    <div className="flex-grow flex flex-col justify-evenly gap-2 min-h-0 overflow-hidden">
+                      {renderListCategory("High Slots", "high", selectedShip.high_slots)}
+                      {renderListCategory("Mid Slots", "mid", selectedShip.mid_slots)}
+                      {renderListCategory("Low Slots", "low", selectedShip.low_slots)}
+                      {renderListCategory("Rig Slots", "rig", selectedShip.rig_slots)}
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* === RECHTE SEITE: EINKLAPPBARE STATS PANELS === */}
-              <div className="w-full xl:w-1/4 flex flex-col gap-3 pr-2 mt-8 xl:mt-0 sticky top-8">
+              {/* === RECHTE SEITE: STATS PANELS === */}
+              <div className="w-full xl:w-1/4 flex flex-col h-full overflow-y-auto custom-scrollbar pr-2 pb-4">
                 
                 {simStats && (
-                  <div className="bg-green-900/30 border border-green-700/50 p-3 rounded mb-2 shadow animate-fade-in">
+                  <div className="bg-green-900/30 border border-green-700/50 p-3 rounded mb-3 shadow animate-fade-in shrink-0">
                     <StatRow label="Effective Hitpoints (EHP)" value={simStats.ehp?.toLocaleString()} unit="EHP" highlight={true} />
                     <StatRow label="DPS (Damage Per Second)" value={simStats.dps?.toLocaleString()} unit="DPS" highlight={true} />
                   </div>
                 )}
 
-                <CollapsiblePanel title="Energiespeicher (Capacitor)" defaultOpen={true}>
-                  <StatRow label="Kapazität" value={selectedShip.cap_capacity?.toLocaleString()} unit="GJ" />
-                  <StatRow label="Aufladezeit" value={selectedShip.cap_recharge ? (selectedShip.cap_recharge / 1000).toFixed(1) : "0"} unit="s" />
-                </CollapsiblePanel>
+                <div className="shrink-0">
+                  <CollapsiblePanel title="Energiespeicher (Capacitor)" defaultOpen={true}>
+                    <StatRow label="Kapazität" value={selectedShip.cap_capacity?.toLocaleString()} unit="GJ" />
+                    <StatRow label="Aufladezeit" value={selectedShip.cap_recharge ? (selectedShip.cap_recharge / 1000).toFixed(1) : "0"} unit="s" />
+                  </CollapsiblePanel>
 
-                <CollapsiblePanel title="Verteidigung (Tank)" defaultOpen={true}>
-                  <div className="flex justify-between items-center mb-1 pr-1">
-                    <div className="w-16"></div> 
-                    <div className="w-16 text-right text-gray-400 text-xs font-bold pr-2">HP</div>
-                    <div className="flex gap-1">
-                      <div className="w-8 lg:w-10 text-center text-blue-400 text-[10px] font-bold">EM</div>
-                      <div className="w-8 lg:w-10 text-center text-red-400 text-[10px] font-bold">THR</div>
-                      <div className="w-8 lg:w-10 text-center text-gray-300 text-[10px] font-bold">KIN</div>
-                      <div className="w-8 lg:w-10 text-center text-orange-400 text-[10px] font-bold">EXP</div>
+                  <CollapsiblePanel title="Verteidigung (Tank)" defaultOpen={true}>
+                    <div className="flex justify-between items-center mb-1 pr-1">
+                      <div className="w-16"></div> 
+                      <div className="w-16 text-right text-gray-400 text-xs font-bold pr-2">HP</div>
+                      <div className="flex gap-1">
+                        <div className="w-8 lg:w-10 text-center text-blue-400 text-[10px] font-bold">EM</div>
+                        <div className="w-8 lg:w-10 text-center text-red-400 text-[10px] font-bold">THR</div>
+                        <div className="w-8 lg:w-10 text-center text-gray-300 text-[10px] font-bold">KIN</div>
+                        <div className="w-8 lg:w-10 text-center text-orange-400 text-[10px] font-bold">EXP</div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                    <span className="text-blue-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Schild</span>
-                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.shield_hp?.toLocaleString() || "0"}</span>
-                    <div className="flex gap-1">
-                      <ResCell value={shieldEm} color="bg-blue-600" />
-                      <ResCell value={shieldTherm} color="bg-red-600" />
-                      <ResCell value={shieldKin} color="bg-gray-500" />
-                      <ResCell value={shieldExpl} color="bg-orange-500" />
+                    <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
+                      <span className="text-blue-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Schild</span>
+                      <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.shield_hp?.toLocaleString() || "0"}</span>
+                      <div className="flex gap-1">
+                        <ResCell value={shieldEm} color="bg-blue-600" />
+                        <ResCell value={shieldTherm} color="bg-red-600" />
+                        <ResCell value={shieldKin} color="bg-gray-500" />
+                        <ResCell value={shieldExpl} color="bg-orange-500" />
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                    <span className="text-gray-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Armor</span>
-                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.armor_hp?.toLocaleString() || "0"}</span>
-                    <div className="flex gap-1">
-                      <ResCell value={armorEm} color="bg-blue-600" />
-                      <ResCell value={armorTherm} color="bg-red-600" />
-                      <ResCell value={armorKin} color="bg-gray-500" />
-                      <ResCell value={armorExpl} color="bg-orange-500" />
+                    <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
+                      <span className="text-gray-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Armor</span>
+                      <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.armor_hp?.toLocaleString() || "0"}</span>
+                      <div className="flex gap-1">
+                        <ResCell value={armorEm} color="bg-blue-600" />
+                        <ResCell value={armorTherm} color="bg-red-600" />
+                        <ResCell value={armorKin} color="bg-gray-500" />
+                        <ResCell value={armorExpl} color="bg-orange-500" />
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                    <span className="text-orange-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Hull</span>
-                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.hull_hp?.toLocaleString() || "0"}</span>
-                    <div className="flex gap-1">
-                      <ResCell value={hullEm} color="bg-blue-600" />
-                      <ResCell value={hullTherm} color="bg-red-600" />
-                      <ResCell value={hullKin} color="bg-gray-500" />
-                      <ResCell value={hullExpl} color="bg-orange-500" />
+                    <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
+                      <span className="text-orange-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Hull</span>
+                      <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.hull_hp?.toLocaleString() || "0"}</span>
+                      <div className="flex gap-1">
+                        <ResCell value={hullEm} color="bg-blue-600" />
+                        <ResCell value={hullTherm} color="bg-red-600" />
+                        <ResCell value={hullKin} color="bg-gray-500" />
+                        <ResCell value={hullExpl} color="bg-orange-500" />
+                      </div>
                     </div>
-                  </div>
-                </CollapsiblePanel>
+                  </CollapsiblePanel>
 
-                <CollapsiblePanel title="Chassis" defaultOpen={true}>
-                  <StatRow label="Ladraum" value={selectedShip.cargo_capacity?.toLocaleString()} unit="m³" />
-                  <StatRow label="Masse" value={selectedShip.mass?.toLocaleString()} unit="kg" />
-                  <StatRow label="Rig Calibration" value={selectedShip.calibration} />
-                </CollapsiblePanel>
+                  <CollapsiblePanel title="Chassis" defaultOpen={true}>
+                    <StatRow label="Ladraum" value={selectedShip.cargo_capacity?.toLocaleString()} unit="m³" />
+                    <StatRow label="Masse" value={selectedShip.mass?.toLocaleString()} unit="kg" />
+                    <StatRow label="Rig Calibration" value={selectedShip.calibration} />
+                  </CollapsiblePanel>
+                </div>
               </div>
 
             </div>

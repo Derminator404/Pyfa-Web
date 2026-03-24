@@ -1,5 +1,4 @@
 import os
-import json
 from eos.const.eve import AttrId
 
 from eos.data_handler.json_data_handler import JsonDataHandler
@@ -28,9 +27,6 @@ class EosSimulator:
         print("[Simulator] Lade Skill-Liste (All V)...")
         self.all_v_skill_ids = []
         self._preload_skills()
-        
-        self.all_modules = []
-        self._build_module_list()
 
     def _preload_skills(self):
         skill_groups = set()
@@ -43,120 +39,6 @@ class EosSimulator:
                 self.all_v_skill_ids.append(int(row.get('typeID')))
         print(f"[Simulator] {len(self.all_v_skill_ids)} Skill-IDs erfolgreich vorgeladen.")
 
-    def _build_module_list(self):
-        print("[Simulator] Scanne EVE Datenbank nach Modulen (SDE Rekursiv-Suche)...")
-        
-        # --- HILFSFUNKTION FÜR NAMEN ---
-        def get_name(row_data, fallback="Unbekannt"):
-            val = row_data.get('name', row_data.get('typeName', row_data.get('groupName')))
-            if isinstance(val, dict):
-                return val.get('en', val.get('de', fallback))
-            if isinstance(val, str) and val.strip():
-                return val
-            return fallback
-
-        # 1. Validierte Gruppen laden
-        valid_groups = {}
-        for row in self.data_handler.get_evegroups():
-            cat_id = str(row.get('categoryID', '')).split('.')[0]
-            if cat_id in ('7', '87'):
-                valid_groups[int(row.get('groupID', 0))] = get_name(row, 'Hardware')
-
-        print(f"[Simulator] {len(valid_groups)} Modul-Gruppen gefunden.")
-
-        # 2. Rekursive Slot-Suche in typedogma.json
-        slot_map = {}
-        typedogma_file = os.path.join(DATA_PATH, "fsd_built", "typedogma.json")
-        
-        if os.path.exists(typedogma_file):
-            print(f"[Simulator] Lese Slot-Zuweisungen aus {typedogma_file}...")
-            with open(typedogma_file, 'r', encoding='utf-8') as f:
-                typedogma_data = json.load(f)
-                
-            # Wenn es eine Liste ist, machen wir ein Dictionary daraus
-            if isinstance(typedogma_data, list):
-                typedogma_data = {str(item.get('typeID', i)): item for i, item in enumerate(typedogma_data)}
-
-            # Die unzerstörbare Such-Funktion
-            def find_slot(obj):
-                if isinstance(obj, dict):
-                    # Check Effect-ID
-                    eid = obj.get('effectID', obj.get('effect_id', obj.get('effectId')))
-                    if eid is not None:
-                        try:
-                            eid = int(eid)
-                            if eid == 12: return 'high'
-                            if eid == 13: return 'mid'
-                            if eid == 11: return 'low'
-                            if eid == 2663: return 'rig'
-                        except: pass
-
-                    # Check Attribute-ID
-                    aid = obj.get('attributeID', obj.get('attribute_id', obj.get('attributeId')))
-                    if aid is not None:
-                        try:
-                            aid = int(aid)
-                            val = obj.get('value', obj.get('valueFloat', obj.get('valueInt', 0)))
-                            if float(val) > 0:
-                                if aid == 137: return 'high'
-                                if aid == 138: return 'mid'
-                                if aid == 139: return 'low'
-                                if aid == 1137: return 'rig'
-                        except: pass
-
-                    # Gehe eine Ebene tiefer
-                    for v in obj.values():
-                        res = find_slot(v)
-                        if res: return res
-
-                elif isinstance(obj, list):
-                    for item in obj:
-                        res = find_slot(item)
-                        if res: return res
-                return None
-
-            # Durchsuche alle Items in der Datei
-            for tid_str, dogma_data in typedogma_data.items():
-                try:
-                    tid = int(tid_str)
-                    slot = find_slot(dogma_data)
-                    if slot:
-                        slot_map[tid] = slot
-                except Exception:
-                    pass
-        else:
-            print(f"[Simulator] WARNUNG: Datei {typedogma_file} nicht gefunden!")
-
-        print(f"[Simulator] {len(slot_map)} Slot-Zuweisungen gefunden. Mappe Items...")
-
-        # 3. Items aus eveTypes abgleichen und in die Liste packen
-        for row in self.data_handler.get_evetypes():
-            if not row.get('published') or not row.get('marketGroupID'):
-                continue
-                
-            group_id = int(row.get('groupID', 0))
-            if group_id not in valid_groups:
-                continue
-                
-            type_id = int(row.get('typeID', 0))
-            slot_type = slot_map.get(type_id)
-            
-            if slot_type:
-                name = get_name(row, 'Unbekannt')
-                if name != "Unbekannt" and valid_groups[group_id] != "Hardware":
-                    self.all_modules.append({
-                        "id": type_id,
-                        "name": name,
-                        "type": slot_type,
-                        "group": valid_groups[group_id]
-                    })
-
-        # 4. Saubere Sortierung
-        slot_order = {"high": 1, "mid": 2, "low": 3, "rig": 4}
-        self.all_modules.sort(key=lambda x: (slot_order.get(x['type'], 5), x['group'], x['name']))
-        
-        print(f"[Simulator] >>> ERFOLG: {len(self.all_modules)} Module geladen und einsatzbereit! <<<")
-
     def simulate(self, ship_id: int, low_slots: list, mid_slots: list, high_slots: list, rig_slots: list, charges: list):
         fit = Fit()
         
@@ -168,8 +50,9 @@ class EosSimulator:
         for skill_id in self.all_v_skill_ids:
             fit.skills.add(Skill(skill_id, level=5))
 
+        # Wir fitten zunächst ALLES als State.active!
         for item_id in low_slots:
-            try: fit.modules.low.equip(ModuleLow(item_id, state=State.online))
+            try: fit.modules.low.equip(ModuleLow(item_id, state=State.active))
             except: pass
             
         for item_id in mid_slots:
@@ -188,11 +71,30 @@ class EosSimulator:
             try: fit.modules.rig.equip(Module(item_id, state=State.online))
             except: pass
 
+        # --- AUTO-HEAL FÜR PASSIVE MODULE ---
         validation_errors = None
-        try:
-            fit.validate()
-        except Exception as e:
-            validation_errors = str(e)
+        for _ in range(20): # Wir probieren es bis zu 20 mal, falls mehrere Module kaputt sind
+            try:
+                fit.validate()
+                validation_errors = None
+                break # Wenn es hier ankommt, ist der Fit zu 100% legal!
+            except Exception as e:
+                err_str = str(e)
+                # Wenn wir StateErrorData sehen, haben wir ein passives Modul gefunden!
+                if "StateErrorData" in err_str:
+                    fixed = False
+                    if len(e.args) > 0 and isinstance(e.args[0], dict):
+                        for mod, restrictions in e.args[0].items():
+                            for restr_type, err_data in restrictions.items():
+                                if "StateErrorData" in str(type(err_data)) or "allowed_states" in str(err_data):
+                                    mod.state = State.online # Wir fixen das Modul!
+                                    fixed = True
+                    if not fixed:
+                        validation_errors = err_str
+                        break
+                else:
+                    validation_errors = err_str
+                    break
 
         from eos.stats_container import DmgProfile
         ehp = fit.stats.get_ehp(DmgProfile(em=25, thermal=25, kinetic=25, explosive=25)).total
