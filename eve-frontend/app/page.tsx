@@ -75,7 +75,7 @@ const CollapsiblePanel = ({ title, children, defaultOpen = true }: any) => {
         <h3 className="text-sm font-bold text-gray-200">{title}</h3>
         <span className={`text-gray-400 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
       </button>
-      {isOpen && <div className="p-3 flex flex-col gap-2 bg-gray-900/40">{children}</div>}
+      {isOpen && <div className="p-3 flex flex-col gap-1 bg-gray-900/40">{children}</div>}
     </div>
   );
 };
@@ -193,7 +193,6 @@ const SvgHardpointGroup = ({ activeCount, centerAngle, radius, activeFill, activ
   );
 };
 
-// --- STATS COMPONENTS (Diese haben im letzten Snippet gefehlt!) ---
 const StatArc = ({ startAngle, endAngle, radius, strokeClass, text, textColorClass }: any) => {
   const start = polarToCartesian(300, 300, radius, startAngle);
   const end = polarToCartesian(300, 300, radius, endAngle);
@@ -225,18 +224,18 @@ const StatArc = ({ startAngle, endAngle, radius, strokeClass, text, textColorCla
 };
 
 const StatRow = ({ label, value, unit = "", highlight = false }: { label: string, value: any, unit?: string, highlight?: boolean }) => (
-  <div className={`flex justify-between items-center py-1.5 border-b border-gray-800/50 hover:bg-gray-800/80 px-1 rounded transition-colors ${highlight ? 'text-green-400 font-bold' : 'text-gray-400'}`}>
-    <span className="text-sm">{label}</span>
-    <span className={`font-mono text-sm ${highlight ? 'text-green-400' : 'text-white'}`}>{value ?? "0"} <span className="opacity-50 text-xs">{unit}</span></span>
+  <div className={`flex justify-between items-center py-1 border-b border-gray-800/50 hover:bg-gray-800/80 px-1 rounded transition-colors ${highlight ? 'text-green-400 font-bold' : 'text-gray-400'}`}>
+    <span className="text-xs">{label}</span>
+    <span className={`font-mono text-xs ${highlight ? 'text-green-400' : 'text-white'}`}>{value ?? "0"} <span className="opacity-50 text-[10px]">{unit}</span></span>
   </div>
 );
 
 const ResCell = ({ value, color }: { value: number, color: string }) => {
   const safeValue = value || 0;
   return (
-    <div className="relative w-10 h-6 md:w-12 md:h-7 bg-gray-800 border border-gray-600 overflow-hidden flex items-center justify-center group rounded-sm">
+    <div className="relative w-10 h-5 md:w-12 md:h-6 bg-gray-800 border border-gray-600 overflow-hidden flex items-center justify-center group rounded-sm">
       <div className={`absolute left-0 top-0 h-full ${color} opacity-80 group-hover:opacity-100 transition-opacity`} style={{ width: `${safeValue}%` }}></div>
-      <span className="relative z-10 text-[10px] md:text-xs font-mono text-white drop-shadow-[0_1px_1px_rgba(0,0,0,1)]">{safeValue.toFixed(0)}%</span>
+      <span className="relative z-10 text-[9px] md:text-[10px] font-mono text-white drop-shadow-[0_1px_1px_rgba(0,0,0,1)]">{safeValue.toFixed(0)}%</span>
     </div>
   );
 };
@@ -393,7 +392,6 @@ export default function Home() {
   const hullKin = simStats ? simStats.resists.hull.kinetic : selectedShip?.hull_kin_res || 0;
   const hullExpl = simStats ? simStats.resists.hull.explosive : selectedShip?.hull_expl_res || 0;
 
-  // --- KOMPAKTERE LISTENDARSTELLUNG FÜR DIE MITTE ---
   const renderListCategory = (title: string, type: string, maxSlots?: number) => {
     if (!maxSlots || maxSlots === 0) return null;
     return (
@@ -590,7 +588,7 @@ export default function Home() {
                         <p className="text-blue-400 text-sm uppercase tracking-widest">{selectedShip.group_name}</p>
                         {isSimulating && <p className="text-green-400 text-[10px] mt-1 animate-pulse uppercase tracking-widest">Simulating...</p>}
                       </div>
-                      <div className="text-right bg-gray-900 p-2 rounded border border-gray-700">
+                      <div className="text-right bg-gray-900 p-2 rounded border border-gray-700 hidden lg:block">
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Ressourcen</div>
                         <div className="text-xs text-gray-300">CPU: <span className={`font-mono ${cpuUsed > (selectedShip.cpu || 0) ? 'text-red-500' : 'text-blue-400'}`}>{cpuUsed.toFixed(1)} / {selectedShip.cpu}</span></div>
                         <div className="text-xs text-gray-300 mt-1">PG: <span className={`font-mono ${pgUsed > (selectedShip.powergrid || 0) ? 'text-red-500' : 'text-red-400'}`}>{pgUsed.toFixed(1)} / {selectedShip.powergrid}</span></div>
@@ -607,74 +605,93 @@ export default function Home() {
                 )}
               </div>
 
-              {/* === RECHTE SEITE: STATS PANELS === */}
+              {/* === RECHTE SEITE: NEUE STATS PANELS === */}
               <div className="w-full xl:w-1/4 flex flex-col h-full overflow-y-auto custom-scrollbar pr-2 pb-4">
                 
-                {simStats && (
-                  <div className="bg-green-900/30 border border-green-700/50 p-3 rounded mb-3 shadow animate-fade-in shrink-0">
-                    <StatRow label="Effective Hitpoints (EHP)" value={simStats.ehp?.toLocaleString()} unit="EHP" highlight={true} />
-                    <StatRow label="DPS (Damage Per Second)" value={simStats.dps?.toLocaleString()} unit="DPS" highlight={true} />
+                <CollapsiblePanel title="Kampf (Combat)" defaultOpen={true}>
+                  <StatRow label="Effective Hitpoints" value={simStats?.ehp?.toLocaleString() || "0"} unit="EHP" highlight={true} />
+                  <StatRow label="Damage Per Second" value={simStats?.dps?.toLocaleString() || "0"} unit="DPS" highlight={true} />
+                </CollapsiblePanel>
+
+                <CollapsiblePanel title="Fitting (Ressourcen)" defaultOpen={true}>
+                  <StatRow label="CPU" value={`${cpuUsed} / ${simStats ? simStats.cpu_total : selectedShip.cpu || 0}`} unit="tf" />
+                  <StatRow label="Powergrid" value={`${pgUsed} / ${simStats ? simStats.powergrid_total : selectedShip.powergrid || 0}`} unit="MW" />
+                  <StatRow label="Calibration" value={selectedShip.calibration || 0} unit="tf" />
+                </CollapsiblePanel>
+
+                <CollapsiblePanel title="Drohnen (Drones)" defaultOpen={true}>
+                  <StatRow label="Bandbreite" value={`${simStats ? simStats.drone_bandwidth_used : "0"} / ${simStats ? simStats.drone_bandwidth_total : "0"}`} unit="Mbit/sec" />
+                  <StatRow label="Drohnenhangar" value={`${simStats ? simStats.dronebay_used : "0"} / ${simStats ? simStats.dronebay_total : "0"}`} unit="m³" />
+                </CollapsiblePanel>
+
+                <CollapsiblePanel title="Energiespeicher (Capacitor)" defaultOpen={true}>
+                  <StatRow label="Kapazität" value={simStats ? simStats.cap_capacity?.toLocaleString() : selectedShip.cap_capacity?.toLocaleString()} unit="GJ" />
+                  <StatRow label="Aufladezeit" value={simStats ? (simStats.cap_recharge / 1000).toFixed(1) : selectedShip.cap_recharge ? (selectedShip.cap_recharge / 1000).toFixed(1) : "0"} unit="s" />
+                </CollapsiblePanel>
+
+                <CollapsiblePanel title="Verteidigung (Tank)" defaultOpen={true}>
+                  <div className="flex justify-between items-center mb-1 pr-1">
+                    <div className="w-16"></div> 
+                    <div className="w-16 text-right text-gray-400 text-xs font-bold pr-2">HP</div>
+                    <div className="flex gap-1">
+                      <div className="w-8 lg:w-10 text-center text-blue-400 text-[10px] font-bold">EM</div>
+                      <div className="w-8 lg:w-10 text-center text-red-400 text-[10px] font-bold">THR</div>
+                      <div className="w-8 lg:w-10 text-center text-gray-300 text-[10px] font-bold">KIN</div>
+                      <div className="w-8 lg:w-10 text-center text-orange-400 text-[10px] font-bold">EXP</div>
+                    </div>
                   </div>
-                )}
 
-                <div className="shrink-0">
-                  <CollapsiblePanel title="Energiespeicher (Capacitor)" defaultOpen={true}>
-                    <StatRow label="Kapazität" value={selectedShip.cap_capacity?.toLocaleString()} unit="GJ" />
-                    <StatRow label="Aufladezeit" value={selectedShip.cap_recharge ? (selectedShip.cap_recharge / 1000).toFixed(1) : "0"} unit="s" />
-                  </CollapsiblePanel>
-
-                  <CollapsiblePanel title="Verteidigung (Tank)" defaultOpen={true}>
-                    <div className="flex justify-between items-center mb-1 pr-1">
-                      <div className="w-16"></div> 
-                      <div className="w-16 text-right text-gray-400 text-xs font-bold pr-2">HP</div>
-                      <div className="flex gap-1">
-                        <div className="w-8 lg:w-10 text-center text-blue-400 text-[10px] font-bold">EM</div>
-                        <div className="w-8 lg:w-10 text-center text-red-400 text-[10px] font-bold">THR</div>
-                        <div className="w-8 lg:w-10 text-center text-gray-300 text-[10px] font-bold">KIN</div>
-                        <div className="w-8 lg:w-10 text-center text-orange-400 text-[10px] font-bold">EXP</div>
-                      </div>
+                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
+                    <span className="text-blue-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Schild</span>
+                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">
+                      {simStats ? simStats.shield_hp?.toLocaleString() : selectedShip.shield_hp?.toLocaleString() || "0"}
+                    </span>
+                    <div className="flex gap-1">
+                      <ResCell value={shieldEm} color="bg-blue-600" />
+                      <ResCell value={shieldTherm} color="bg-red-600" />
+                      <ResCell value={shieldKin} color="bg-gray-500" />
+                      <ResCell value={shieldExpl} color="bg-orange-500" />
                     </div>
+                  </div>
 
-                    <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                      <span className="text-blue-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Schild</span>
-                      <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.shield_hp?.toLocaleString() || "0"}</span>
-                      <div className="flex gap-1">
-                        <ResCell value={shieldEm} color="bg-blue-600" />
-                        <ResCell value={shieldTherm} color="bg-red-600" />
-                        <ResCell value={shieldKin} color="bg-gray-500" />
-                        <ResCell value={shieldExpl} color="bg-orange-500" />
-                      </div>
+                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
+                    <span className="text-gray-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Armor</span>
+                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">
+                      {simStats ? simStats.armor_hp?.toLocaleString() : selectedShip.armor_hp?.toLocaleString() || "0"}
+                    </span>
+                    <div className="flex gap-1">
+                      <ResCell value={armorEm} color="bg-blue-600" />
+                      <ResCell value={armorTherm} color="bg-red-600" />
+                      <ResCell value={armorKin} color="bg-gray-500" />
+                      <ResCell value={armorExpl} color="bg-orange-500" />
                     </div>
+                  </div>
 
-                    <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                      <span className="text-gray-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Armor</span>
-                      <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.armor_hp?.toLocaleString() || "0"}</span>
-                      <div className="flex gap-1">
-                        <ResCell value={armorEm} color="bg-blue-600" />
-                        <ResCell value={armorTherm} color="bg-red-600" />
-                        <ResCell value={armorKin} color="bg-gray-500" />
-                        <ResCell value={armorExpl} color="bg-orange-500" />
-                      </div>
+                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
+                    <span className="text-orange-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Hull</span>
+                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">
+                      {simStats ? simStats.hull_hp?.toLocaleString() : selectedShip.hull_hp?.toLocaleString() || "0"}
+                    </span>
+                    <div className="flex gap-1">
+                      <ResCell value={hullEm} color="bg-blue-600" />
+                      <ResCell value={hullTherm} color="bg-red-600" />
+                      <ResCell value={hullKin} color="bg-gray-500" />
+                      <ResCell value={hullExpl} color="bg-orange-500" />
                     </div>
+                  </div>
+                </CollapsiblePanel>
 
-                    <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                      <span className="text-orange-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Hull</span>
-                      <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">{selectedShip.hull_hp?.toLocaleString() || "0"}</span>
-                      <div className="flex gap-1">
-                        <ResCell value={hullEm} color="bg-blue-600" />
-                        <ResCell value={hullTherm} color="bg-red-600" />
-                        <ResCell value={hullKin} color="bg-gray-500" />
-                        <ResCell value={hullExpl} color="bg-orange-500" />
-                      </div>
-                    </div>
-                  </CollapsiblePanel>
+                <CollapsiblePanel title="Navigation" defaultOpen={true}>
+                  <StatRow label="Max. Geschwindigkeit" value={simStats?.max_velocity?.toLocaleString() || "0"} unit="m/s" />
+                  <StatRow label="Ausrichtezeit (Align)" value={simStats?.align_time?.toLocaleString() || "0"} unit="s" />
+                  <StatRow label="Agility Factor" value={simStats?.agility_factor?.toLocaleString() || "0"} unit="x" />
+                  <StatRow label="Masse" value={simStats?.mass?.toLocaleString() || selectedShip.mass?.toLocaleString() || "0"} unit="kg" />
+                </CollapsiblePanel>
 
-                  <CollapsiblePanel title="Chassis" defaultOpen={true}>
-                    <StatRow label="Ladraum" value={selectedShip.cargo_capacity?.toLocaleString()} unit="m³" />
-                    <StatRow label="Masse" value={selectedShip.mass?.toLocaleString()} unit="kg" />
-                    <StatRow label="Rig Calibration" value={selectedShip.calibration} />
-                  </CollapsiblePanel>
-                </div>
+                <CollapsiblePanel title="Chassis" defaultOpen={false}>
+                  <StatRow label="Laderaum (Cargo)" value={simStats ? simStats.cargo_capacity?.toLocaleString() : selectedShip.cargo_capacity?.toLocaleString()} unit="m³" />
+                </CollapsiblePanel>
+                
               </div>
 
             </div>

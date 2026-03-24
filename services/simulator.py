@@ -1,5 +1,4 @@
 import os
-from eos.const.eve import AttrId
 
 from eos.data_handler.json_data_handler import JsonDataHandler
 from eos.cache_handler.json_cache_handler import JsonCacheHandler
@@ -50,7 +49,6 @@ class EosSimulator:
         for skill_id in self.all_v_skill_ids:
             fit.skills.add(Skill(skill_id, level=5))
 
-        # Wir fitten zunächst ALLES als State.active!
         for item_id in low_slots:
             try: fit.modules.low.equip(ModuleLow(item_id, state=State.active))
             except: pass
@@ -73,21 +71,20 @@ class EosSimulator:
 
         # --- AUTO-HEAL FÜR PASSIVE MODULE ---
         validation_errors = None
-        for _ in range(20): # Wir probieren es bis zu 20 mal, falls mehrere Module kaputt sind
+        for _ in range(20): 
             try:
                 fit.validate()
                 validation_errors = None
-                break # Wenn es hier ankommt, ist der Fit zu 100% legal!
+                break 
             except Exception as e:
                 err_str = str(e)
-                # Wenn wir StateErrorData sehen, haben wir ein passives Modul gefunden!
                 if "StateErrorData" in err_str:
                     fixed = False
                     if len(e.args) > 0 and isinstance(e.args[0], dict):
                         for mod, restrictions in e.args[0].items():
                             for restr_type, err_data in restrictions.items():
                                 if "StateErrorData" in str(type(err_data)) or "allowed_states" in str(err_data):
-                                    mod.state = State.online # Wir fixen das Modul!
+                                    mod.state = State.online 
                                     fixed = True
                     if not fixed:
                         validation_errors = err_str
@@ -100,12 +97,21 @@ class EosSimulator:
         ehp = fit.stats.get_ehp(DmgProfile(em=25, thermal=25, kinetic=25, explosive=25)).total
         dps = fit.stats.get_dps(reload=False).total
 
-        try:
-            max_speed = fit.ship.attrs[AttrId.maxVelocity]
-            mass = fit.ship.attrs[AttrId.mass]
-        except (AttributeError, KeyError):
-            max_speed = 0.0
-            mass = 0.0
+        # --- ROBUSTE WERT-ABFRAGE DIREKT ÜBER EVE DATENBANK IDs ---
+        def get_attr(attr_id, default=0.0):
+            try:
+                return float(fit.ship.attrs[attr_id])
+            except:
+                return default
+
+        max_speed = get_attr(37)       # 37 = maxVelocity
+        mass = get_attr(4)             # 4 = mass
+        shield_hp = get_attr(263)      # 263 = shieldCapacity
+        armor_hp = get_attr(265)       # 265 = armorHP
+        hull_hp = get_attr(9)          # 9 = hp (Hull)
+        cap_capacity = get_attr(482)   # 482 = capacitorCapacity
+        cap_recharge = get_attr(55)    # 55 = rechargeRate
+        cargo_capacity = get_attr(38)  # 38 = capacity (Cargo)
 
         drone_bw_used = getattr(fit.stats.drone_bandwidth, 'used', 0.0)
         drone_bw_total = getattr(fit.stats.drone_bandwidth, 'total', getattr(fit.stats.drone_bandwidth, 'output', 0.0))
@@ -136,13 +142,19 @@ class EosSimulator:
                 "dronebay_total": round(dronebay_total, 1),
                 "ehp": round(ehp, 2),
                 "dps": round(dps, 2),
+                "shield_hp": round(shield_hp, 0),
+                "armor_hp": round(armor_hp, 0),
+                "hull_hp": round(hull_hp, 0),
+                "cap_capacity": round(cap_capacity, 1),
+                "cap_recharge": round(cap_recharge, 1),
+                "cargo_capacity": round(cargo_capacity, 1),
+                "max_velocity": round(max_speed, 1),
+                "mass": round(mass, 1),
                 "resists": {
                     "shield": format_resists(res.shield),
                     "armor": format_resists(res.armor),
                     "hull": format_resists(res.hull)
                 },
-                "max_velocity": round(max_speed, 1),
-                "mass": round(mass, 1),
                 "align_time": round(fit.stats.align_time, 2) if fit.stats.align_time else 0.0,
                 "agility_factor": round(fit.stats.agility_factor, 3) if fit.stats.agility_factor else 0.0
             }
