@@ -1,7 +1,6 @@
 import os
 from eos.const.eve import AttrId
 
-# --- EXPLIZITE IMPORTS (Das fixt den Docker-Fehler!) ---
 from eos.data_handler.json_data_handler import JsonDataHandler
 from eos.cache_handler.json_cache_handler import JsonCacheHandler
 from eos.source.manager import SourceManager
@@ -9,10 +8,11 @@ from eos.item.character import Character
 from eos.item.skill import Skill
 from eos.item.ship import Ship
 from eos.fit import Fit
-from eos.item.module import ModuleLow, ModuleMid, ModuleHigh
+
+# KORREKTUR: "Module" importiert, damit laden wir die Rigs!
+from eos.item.module import Module, ModuleLow, ModuleMid, ModuleHigh
 from eos.item.charge import Charge
 from eos.effect_status import State
-# -------------------------------------------------------
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PATH = os.path.join(BASE_DIR, "staticdata")
@@ -26,7 +26,6 @@ class EosSimulator:
         SourceManager.add('tq', self.data_handler, self.cache_handler, make_default=True)
         
         print("[Simulator] Lade Skill-Liste (All V)...")
-        # CHANGED: Store only the IDs, not the Skill objects
         self.all_v_skill_ids = []
         self._preload_skills()
 
@@ -38,29 +37,42 @@ class EosSimulator:
 
         for row in self.data_handler.get_evetypes():
             if row.get('groupID') in skill_groups and row.get('typeID'):
-                # CHANGED: Append only the integer ID
                 self.all_v_skill_ids.append(int(row.get('typeID')))
         print(f"[Simulator] {len(self.all_v_skill_ids)} Skill-IDs erfolgreich vorgeladen.")
 
-    def simulate(self, ship_id: int, low_slots: list, mid_slots: list, high_slots: list, charges: list):
+    def simulate(self, ship_id: int, low_slots: list, mid_slots: list, high_slots: list, rig_slots: list, charges: list):
         fit = Fit()
-        fit.ship = Ship(ship_id)
         
-        # CHANGED: Instantiate fresh Skill objects for THIS specific fit
+        try:
+            fit.ship = Ship(ship_id)
+        except Exception as e:
+            return {"is_valid": False, "errors": f"Ungültiges Schiff (ID {ship_id}): {str(e)}", "stats": None}
+        
+        # Skills anwenden
         for skill_id in self.all_v_skill_ids:
             fit.skills.add(Skill(skill_id, level=5))
 
-        # Module equippen
+        # Module equippen (mit Try-Except, damit das Tool nicht abstürzt!)
         for item_id in low_slots:
-            fit.modules.low.equip(ModuleLow(item_id, state=State.online))
+            try: fit.modules.low.equip(ModuleLow(item_id, state=State.online))
+            except: pass
+            
         for item_id in mid_slots:
-            fit.modules.mid.equip(ModuleMid(item_id, state=State.active))
+            try: fit.modules.mid.equip(ModuleMid(item_id, state=State.active))
+            except: pass
             
         for i, item_id in enumerate(high_slots):
-            if i < len(charges) and charges[i]:
-                fit.modules.high.equip(ModuleHigh(item_id, state=State.active, charge=Charge(charges[i])))
-            else:
-                fit.modules.high.equip(ModuleHigh(item_id, state=State.active))
+            try:
+                if i < len(charges) and charges[i]:
+                    fit.modules.high.equip(ModuleHigh(item_id, state=State.active, charge=Charge(charges[i])))
+                else:
+                    fit.modules.high.equip(ModuleHigh(item_id, state=State.active))
+            except: pass
+
+        # KORREKTUR: Rigs als generisches "Module" einbauen
+        for item_id in rig_slots:
+            try: fit.modules.rig.equip(Module(item_id, state=State.online))
+            except: pass
 
         validation_errors = None
         try:
@@ -68,12 +80,10 @@ class EosSimulator:
         except Exception as e:
             validation_errors = str(e)
 
-        # --- BASIS STATS ---
         from eos.stats_container import DmgProfile
         ehp = fit.stats.get_ehp(DmgProfile(em=25, thermal=25, kinetic=25, explosive=25)).total
         dps = fit.stats.get_dps(reload=False).total
 
-        # --- SCHIFFSATTRIBUTE AUSLESEN (Speed, Masse, etc.) ---
         try:
             max_speed = fit.ship.attrs[AttrId.maxVelocity]
             mass = fit.ship.attrs[AttrId.mass]
@@ -81,14 +91,12 @@ class EosSimulator:
             max_speed = 0.0
             mass = 0.0
 
-        # --- DRONEN & KALIBRIERUNG ---
         drone_bw_used = getattr(fit.stats.drone_bandwidth, 'used', 0.0)
         drone_bw_total = getattr(fit.stats.drone_bandwidth, 'total', getattr(fit.stats.drone_bandwidth, 'output', 0.0))
         
         dronebay_used = getattr(fit.stats.dronebay, 'used', 0.0)
         dronebay_total = getattr(fit.stats.dronebay, 'total', getattr(fit.stats.dronebay, 'output', 0.0))
 
-        # --- RESISTENZEN (Umrechnung in Prozent) ---
         res = fit.stats.resists
         def format_resists(layer):
             return {
@@ -102,19 +110,14 @@ class EosSimulator:
             "is_valid": validation_errors is None,
             "errors": validation_errors,
             "stats": {
-                # Ressourcen
                 "powergrid_used": round(getattr(fit.stats.powergrid, 'used', 0.0), 1),
                 "powergrid_total": round(getattr(fit.stats.powergrid, 'output', getattr(fit.stats.powergrid, 'total', 0.0)), 1),
                 "cpu_used": round(getattr(fit.stats.cpu, 'used', 0.0), 1),
                 "cpu_total": round(getattr(fit.stats.cpu, 'output', getattr(fit.stats.cpu, 'total', 0.0)), 1),
-                
-                # Dronen
                 "drone_bandwidth_used": round(drone_bw_used, 1),
                 "drone_bandwidth_total": round(drone_bw_total, 1),
                 "dronebay_used": round(dronebay_used, 1),
                 "dronebay_total": round(dronebay_total, 1),
-                
-                # Kampf & Überleben
                 "ehp": round(ehp, 2),
                 "dps": round(dps, 2),
                 "resists": {
@@ -122,8 +125,6 @@ class EosSimulator:
                     "armor": format_resists(res.armor),
                     "hull": format_resists(res.hull)
                 },
-                
-                # Navigation
                 "max_velocity": round(max_speed, 1),
                 "mass": round(mass, 1),
                 "align_time": round(fit.stats.align_time, 2) if fit.stats.align_time else 0.0,
@@ -131,5 +132,4 @@ class EosSimulator:
             }
         }
 
-# Globale Instanz erstellen (Wird beim Serverstart einmalig geladen)
 eos_sim = EosSimulator()

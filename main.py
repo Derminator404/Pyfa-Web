@@ -45,19 +45,31 @@ def get_attributes(ship_id: int, db: sqlite3.Connection = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Simulation with debug output
-@app.post("/simulate")
-def simulate_fit(request: FitRequest):
-    try:
-        return eos_sim.simulate(
-            ship_id=request.ship_id,
-            low_slots=request.low_slots,
-            mid_slots=request.mid_slots,
-            high_slots=request.high_slots,
-            charges=request.charges
-        )
-    except Exception as e:
-        # 1. Druckt den kompletten, roten Fehlerbaum in die Docker-Konsole
-        traceback.print_exc() 
-        # 2. Schickt den echten Fehler-Namen an dein Frontend/Swagger zurück
-        raise HTTPException(status_code=400, detail=repr(e))
+
+# NEU: rig_slots hinzugefügt
+class FitSimulationRequest(BaseModel):
+    ship_id: int
+    high_slots: List[int] = []
+    mid_slots: List[int] = []
+    low_slots: List[int] = []
+    rig_slots: List[int] = []  # <--- WICHTIG
+    charges: List[int] = []
+
+@app.post("/simulate", tags=["Simulation"])
+def simulate_fit(request: FitSimulationRequest):
+    # Den Import zu deinem eos_sim musst du oben in der Datei haben!
+    from services.simulator import eos_sim 
+    
+    result = eos_sim.simulate(
+        ship_id=request.ship_id,
+        low_slots=request.low_slots,
+        mid_slots=request.mid_slots,
+        high_slots=request.high_slots,
+        rig_slots=request.rig_slots, # <--- WICHTIG
+        charges=request.charges
+    )
+    
+    if not result["is_valid"]:
+        return {"is_valid": False, "errors": result["errors"]}
+        
+    return result
