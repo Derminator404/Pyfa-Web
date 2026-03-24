@@ -187,6 +187,12 @@ export default function Home() {
   const [simStats, setSimStats] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [activeSlot, setActiveSlot] = useState<{ type: string, index: number } | null>(null);
+
+  // --- NEU: Ansichts-Schalter (Wheel vs. Pyfa List) ---
+  const [viewMode, setViewMode] = useState<"wheel" | "list">("wheel");
+
   const fetchShips = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!searchInput.trim()) return;
@@ -205,6 +211,11 @@ export default function Home() {
       setFittedModules({ high: [], mid: [], low: [], rig: [] });
       setSimStats(null);
     } catch (err: any) { alert("Fehler: " + err.message); }
+  };
+
+  const handleSlotClick = (type: string, index: number) => {
+    setActiveSlot({ type, index });
+    setPickerOpen(true);
   };
 
   const equipModule = (module: any) => {
@@ -304,21 +315,86 @@ export default function Home() {
   const hullKin = simStats ? simStats.resists.hull.kinetic : selectedShip?.hull_kin_res || 0;
   const hullExpl = simStats ? simStats.resists.hull.explosive : selectedShip?.hull_expl_res || 0;
 
+
+  // --- HILFSFUNKTION: Render Pyfa Listen-Kategorie ---
+  const renderListCategory = (title: string, type: string, maxSlots?: number) => {
+    if (!maxSlots || maxSlots === 0) return null;
+    
+    return (
+      <div className="mb-6">
+        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest border-b border-gray-700 pb-1 mb-2">
+          {title} <span className="text-gray-600 text-xs ml-2">({fittedModules[type].filter((x:any) => x).length}/{maxSlots})</span>
+        </h3>
+        <div className="flex flex-col gap-1">
+          {Array.from({ length: maxSlots }).map((_, i) => {
+            const moduleId = fittedModules[type][i];
+            const mod = moduleId ? MOCK_MODULES.find(m => m.id === moduleId) : null;
+            
+            return (
+              <div 
+                key={i}
+                onClick={() => !mod && handleSlotClick(type, i)}
+                className={`flex items-center justify-between p-2 rounded border ${mod ? 'bg-gray-800 border-gray-600' : 'bg-gray-900/50 border-gray-800 border-dashed hover:border-blue-500 cursor-pointer'} transition-colors`}
+              >
+                <div className="flex items-center gap-3">
+                   <div className="w-8 h-8 bg-gray-900 rounded flex items-center justify-center text-sm shadow-inner border border-gray-700">
+                     {mod ? mod.icon : '+'}
+                   </div>
+                   <span className={`text-sm ${mod ? 'text-gray-200 font-bold' : 'text-gray-600 italic'}`}>
+                     {mod ? mod.name : `Leerer Slot`}
+                   </span>
+                </div>
+                {mod && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); unequipModule(type, i); }}
+                    className="text-red-500 hover:text-red-400 p-2 hover:bg-red-500/20 rounded transition-colors"
+                    title="Modul ausbauen"
+                  >
+                    ✖
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <main className="min-h-screen p-4 md:p-8 bg-gray-900 text-gray-100 font-sans selection:bg-blue-500/30">
       <div className="max-w-[1600px] mx-auto relative">
 
         {selectedShip ? (
           <div className="animate-fade-in">
-            <button onClick={() => setSelectedShip(null)} className="mb-4 text-blue-400 hover:text-blue-300 flex items-center gap-2 font-semibold text-sm uppercase tracking-widest z-50 relative">
-              ← Anderes Schiff suchen
-            </button>
+            <div className="flex justify-between items-center mb-6">
+              <button onClick={() => setSelectedShip(null)} className="text-blue-400 hover:text-blue-300 flex items-center gap-2 font-semibold text-sm uppercase tracking-widest">
+                ← Anderes Schiff suchen
+              </button>
+              
+              {/* --- TOGGLE BUTTONS --- */}
+              <div className="bg-gray-800 p-1 rounded-lg border border-gray-700 flex shadow-lg">
+                <button 
+                  onClick={() => setViewMode('wheel')} 
+                  className={`px-6 py-2 text-sm font-bold uppercase tracking-widest rounded transition-all ${viewMode === 'wheel' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                >
+                  Wheel
+                </button>
+                <button 
+                  onClick={() => setViewMode('list')} 
+                  className={`px-6 py-2 text-sm font-bold uppercase tracking-widest rounded transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                >
+                  Pyfa List
+                </button>
+              </div>
+            </div>
 
             {/* 3-SPALTEN LAYOUT */}
             <div className="flex flex-col xl:flex-row gap-6 justify-between items-start">
               
               {/* === LINKE SEITE: MODULE BROWSER === */}
-              <div className="w-full xl:w-1/4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-xl overflow-hidden flex flex-col h-[600px]">
+              {/* Die Modul-Suche bleibt auf 600px Höhe fixiert (als Sticky Element könnte sie auch scrollen, aber so bleibt sie im Blickfeld) */}
+              <div className="w-full xl:w-1/4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-xl overflow-hidden flex flex-col h-[600px] sticky top-8">
                 <div className="p-4 bg-gray-800 border-b border-gray-700">
                   <h2 className="text-sm font-bold text-gray-200 uppercase tracking-widest mb-3">Hardware</h2>
                   <input 
@@ -352,37 +428,62 @@ export default function Home() {
               </div>
 
 
-              {/* === MITTE: DAS RIESIGE EVE FITTING WHEEL === */}
+              {/* === MITTE: FITTING ANSICHT (WHEEL ODER LISTE) === */}
               <div className="w-full xl:w-2/4 flex justify-center">
-                <div className="relative w-[360px] h-[360px] md:w-[600px] md:h-[600px] flex-shrink-0 bg-gray-900 rounded-full shadow-[0_0_80px_rgba(0,0,0,0.8)] border border-gray-800">
-                  
-                  <div className="absolute inset-0 m-auto w-32 h-32 md:w-48 md:h-48 bg-gray-800/80 rounded-full border border-gray-600 flex flex-col items-center justify-center shadow-lg z-10">
-                    <h2 className="text-lg md:text-2xl font-bold text-white text-center leading-tight px-2 drop-shadow-md">{selectedShip.name}</h2>
-                    <p className="text-[10px] md:text-xs text-blue-400 mt-1 uppercase tracking-widest">{selectedShip.group_name}</p>
-                    {isSimulating && <p className="text-green-400 text-[10px] mt-2 animate-pulse uppercase tracking-widest">Simulating...</p>}
+                
+                {viewMode === 'wheel' ? (
+                  // --- WHEEL VIEW ---
+                  <div className="relative w-[360px] h-[360px] md:w-[600px] md:h-[600px] flex-shrink-0 bg-gray-900 rounded-full shadow-[0_0_80px_rgba(0,0,0,0.8)] border border-gray-800 animate-fade-in">
+                    <div className="absolute inset-0 m-auto w-32 h-32 md:w-48 md:h-48 bg-gray-800/80 rounded-full border border-gray-600 flex flex-col items-center justify-center shadow-lg z-10">
+                      <h2 className="text-lg md:text-2xl font-bold text-white text-center leading-tight px-2 drop-shadow-md">{selectedShip.name}</h2>
+                      <p className="text-[10px] md:text-xs text-blue-400 mt-1 uppercase tracking-widest">{selectedShip.group_name}</p>
+                      {isSimulating && <p className="text-green-400 text-[10px] mt-2 animate-pulse uppercase tracking-widest">Simulating...</p>}
+                    </div>
+
+                    <svg viewBox="0 0 600 600" className="absolute inset-0 w-full h-full pointer-events-none">
+                      <line x1="300" y1="50" x2="300" y2="550" stroke="#374151" strokeWidth="1" opacity="0.3" />
+                      <line x1="50" y1="300" x2="550" y2="300" stroke="#374151" strokeWidth="1" opacity="0.3" />
+                      <circle cx="300" cy="300" r="150" stroke="#374151" strokeWidth="1" fill="none" opacity="0.2" />
+
+                      <SvgSlotGroup activeCount={selectedShip.high_slots} centerAngle={0} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-gray-400" iconType="high" onSlotClick={!isSimulating ? unequipModule : null} fittedModules={fittedModules} />
+                      <SvgSlotGroup activeCount={selectedShip.mid_slots} centerAngle={90} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-blue-500/80" iconType="mid" onSlotClick={!isSimulating ? unequipModule : null} fittedModules={fittedModules} />
+                      <SvgSlotGroup activeCount={selectedShip.low_slots} centerAngle={180} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-green-500/80" iconType="low" onSlotClick={!isSimulating ? unequipModule : null} fittedModules={fittedModules} />
+                      <SvgSlotGroup activeCount={selectedShip.rig_slots} centerAngle={-60} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-yellow-600/80" iconType="rig" onSlotClick={!isSimulating ? unequipModule : null} fittedModules={fittedModules} />
+
+                      <SvgHardpointGroup activeCount={selectedShip.turret_slots} centerAngle={-23} radius={200} activeFill="fill-red-900" activeStroke="stroke-red-500" />
+                      <SvgHardpointGroup activeCount={selectedShip.launcher_slots} centerAngle={23} radius={200} activeFill="fill-orange-900" strokeClass="stroke-orange-500" />
+
+                      <StatArc startAngle={35} endAngle={70} radius={280} strokeClass={cpuUsed > (selectedShip.cpu || 0) ? "stroke-red-500" : "stroke-blue-500"} textColorClass="fill-blue-400" text={`CPU ${cpuUsed.toFixed(1)} / ${selectedShip.cpu} tf`} />
+                      <StatArc startAngle={110} endAngle={145} radius={280} strokeClass={pgUsed > (selectedShip.powergrid || 0) ? "stroke-yellow-500" : "stroke-red-600"} textColorClass="fill-red-400" text={`PG ${pgUsed.toFixed(1)} / ${selectedShip.powergrid} MW`} />
+                    </svg>
                   </div>
+                ) : (
+                  // --- PYFA LIST VIEW (Jetzt extended!) ---
+                  <div className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-6 animate-fade-in shadow-xl">
+                    <div className="flex justify-between items-start mb-6 border-b border-gray-700 pb-4">
+                      <div>
+                        <h2 className="text-3xl font-black text-white tracking-wide">{selectedShip.name}</h2>
+                        <p className="text-blue-400 text-sm uppercase tracking-widest">{selectedShip.group_name}</p>
+                        {isSimulating && <p className="text-green-400 text-[10px] mt-1 animate-pulse uppercase tracking-widest">Simulating...</p>}
+                      </div>
+                      <div className="text-right bg-gray-900 p-3 rounded border border-gray-700">
+                        <div className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Ressourcen</div>
+                        <div className="text-sm text-gray-300">CPU: <span className={`font-mono ${cpuUsed > (selectedShip.cpu || 0) ? 'text-red-500' : 'text-blue-400'}`}>{cpuUsed.toFixed(1)} / {selectedShip.cpu} tf</span></div>
+                        <div className="text-sm text-gray-300 mt-1">PG: <span className={`font-mono ${pgUsed > (selectedShip.powergrid || 0) ? 'text-red-500' : 'text-red-400'}`}>{pgUsed.toFixed(1)} / {selectedShip.powergrid} MW</span></div>
+                      </div>
+                    </div>
+                    
+                    {renderListCategory("High Slots", "high", selectedShip.high_slots)}
+                    {renderListCategory("Mid Slots", "mid", selectedShip.mid_slots)}
+                    {renderListCategory("Low Slots", "low", selectedShip.low_slots)}
+                    {renderListCategory("Rig Slots", "rig", selectedShip.rig_slots)}
+                  </div>
+                )}
 
-                  <svg viewBox="0 0 600 600" className="absolute inset-0 w-full h-full pointer-events-none">
-                    <line x1="300" y1="50" x2="300" y2="550" stroke="#374151" strokeWidth="1" opacity="0.3" />
-                    <line x1="50" y1="300" x2="550" y2="300" stroke="#374151" strokeWidth="1" opacity="0.3" />
-                    <circle cx="300" cy="300" r="150" stroke="#374151" strokeWidth="1" fill="none" opacity="0.2" />
-
-                    <SvgSlotGroup activeCount={selectedShip.high_slots} centerAngle={0} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-gray-400" iconType="high" onSlotClick={unequipModule} fittedModules={fittedModules} />
-                    <SvgSlotGroup activeCount={selectedShip.mid_slots} centerAngle={90} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-blue-500/80" iconType="mid" onSlotClick={unequipModule} fittedModules={fittedModules} />
-                    <SvgSlotGroup activeCount={selectedShip.low_slots} centerAngle={180} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-green-500/80" iconType="low" onSlotClick={unequipModule} fittedModules={fittedModules} />
-                    <SvgSlotGroup activeCount={selectedShip.rig_slots} centerAngle={-60} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-yellow-600/80" iconType="rig" onSlotClick={unequipModule} fittedModules={fittedModules} />
-
-                    <SvgHardpointGroup activeCount={selectedShip.turret_slots} centerAngle={-23} radius={200} activeFill="fill-red-900" activeStroke="stroke-red-500" />
-                    <SvgHardpointGroup activeCount={selectedShip.launcher_slots} centerAngle={23} radius={200} activeFill="fill-orange-900" strokeClass="stroke-orange-500" />
-
-                    <StatArc startAngle={35} endAngle={70} radius={280} strokeClass={cpuUsed > (selectedShip.cpu || 0) ? "stroke-red-500" : "stroke-blue-500"} textColorClass="fill-blue-400" text={`CPU ${cpuUsed.toFixed(1)} / ${selectedShip.cpu} tf`} />
-                    <StatArc startAngle={110} endAngle={145} radius={280} strokeClass={pgUsed > (selectedShip.powergrid || 0) ? "stroke-yellow-500" : "stroke-red-600"} textColorClass="fill-red-400" text={`PG ${pgUsed.toFixed(1)} / ${selectedShip.powergrid} MW`} />
-                  </svg>
-                </div>
               </div>
 
               {/* === RECHTE SEITE: EINKLAPPBARE STATS PANELS === */}
-              <div className="w-full xl:w-1/4 flex flex-col gap-3 overflow-y-auto max-h-[85vh] custom-scrollbar pr-2 mt-8 xl:mt-0">
+              <div className="w-full xl:w-1/4 flex flex-col gap-3 pr-2 mt-8 xl:mt-0 sticky top-8">
                 
                 {simStats && (
                   <div className="bg-green-900/30 border border-green-700/50 p-3 rounded mb-2 shadow animate-fade-in">
@@ -474,6 +575,24 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* MODAL FÜR MANUELLE SLOT-WAHL (Aus Wheel oder Liste) */}
+      {pickerOpen && activeSlot && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] backdrop-blur-sm">
+          <div className="bg-gray-800 border border-gray-600 p-6 rounded-lg w-96 max-w-full shadow-2xl">
+            <h2 className="text-xl font-bold text-white mb-4 uppercase tracking-widest border-b border-gray-700 pb-2">
+              Modul für {activeSlot.type.toUpperCase()} Slot {activeSlot.index + 1}
+            </h2>
+            <p className="text-gray-400 text-sm mb-4">Bitte wähle ein Modul aus der linken Hardware-Leiste aus. Klicke dazu einfach auf ein Modul in der Liste.</p>
+            <button 
+              className="w-full bg-gray-700 hover:bg-gray-600 p-3 text-white rounded transition-colors tracking-widest uppercase text-sm font-bold"
+              onClick={() => setPickerOpen(false)}
+            >
+              Schließen
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
