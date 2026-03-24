@@ -16,3 +16,4 @@ staticdata/
 # IDE Einstellungen (optional)
 .vscode/
 .idea/
+.continue/
