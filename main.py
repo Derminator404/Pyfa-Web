@@ -55,6 +55,14 @@ class FitSimulationRequest(BaseModel):
     rig_slots: List[int] = []  # <--- WICHTIG
     charges: List[int] = []
 
+# NEU: Modul-Liste anfragen
+@app.get("/modules", tags=["Datenbank"])
+def get_all_modules():
+    from services.simulator import eos_sim
+    # Schickt die fertig gecachete Liste ans Frontend!
+    return eos_sim.all_modules
+
+
 @app.post("/simulate", tags=["Simulation"])
 def simulate_fit(request: FitSimulationRequest):
     # Den Import zu deinem eos_sim musst du oben in der Datei haben!

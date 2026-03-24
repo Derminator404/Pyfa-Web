@@ -1,19 +1,8 @@
 "use client";
 
-import { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 const API_BASE_URL = "http://192.168.1.230:8080";
-
-// --- ECHTE EVE IDs FÜR MODULE ---
-const MOCK_MODULES = [
-  { id: 2048, name: "Damage Control II", type: "low", icon: "🛡️" },
-  { id: 10190, name: "Magnetic Field Stabilizer II", type: "low", icon: "🧲" },
-  { id: 12056, name: "10MN Afterburner II", type: "mid", icon: "🔥" },
-  { id: 3242, name: "Warp Disruptor II", type: "mid", icon: "🕸️" },
-  { id: 2410, name: "Heavy Missile Launcher II", type: "high", icon: "🚀" },
-  { id: 2873, name: "Mega Pulse Laser II", type: "high", icon: "⚡" },
-  { id: 31089, name: "Medium Core Defense Field Extender I", type: "rig", icon: "🔧" },
-];
 
 // --- INTERFACE ---
 interface Ship {
@@ -28,7 +17,35 @@ interface Ship {
   shield_hp?: number; shield_em_res?: number; shield_therm_res?: number; shield_kin_res?: number; shield_expl_res?: number;
 }
 
-// --- SVG MATH MAGIE ---
+// --- DYNAMISCHE ICONS ---
+const getModuleIcon = (type: string, name: string) => {
+  const n = name.toLowerCase();
+  if (type === 'high') {
+    if (n.includes('laser') || n.includes('pulse') || n.includes('beam')) return "⚡";
+    if (n.includes('missile') || n.includes('launcher') || n.includes('rocket')) return "🚀";
+    if (n.includes('projectile') || n.includes('railgun') || n.includes('artillery') || n.includes('cannon')) return "🔫";
+    if (n.includes('miner') || n.includes('salvager')) return "⛏️";
+    return "🔭"; 
+  }
+  if (type === 'mid') {
+    if (n.includes('afterburner') || n.includes('microwarp')) return "🔥";
+    if (n.includes('shield')) return "🛡️";
+    if (n.includes('web') || n.includes('disruptor') || n.includes('scram')) return "🕸️";
+    if (n.includes('battery') || n.includes('cap')) return "🔋";
+    return "📡";
+  }
+  if (type === 'low') {
+    if (n.includes('armor')) return "🧱";
+    if (n.includes('damage control')) return "💼";
+    if (n.includes('magnetic') || n.includes('heat sink') || n.includes('gyro')) return "🧲";
+    if (n.includes('power') || n.includes('reactor')) return "☢️";
+    return "⚙️";
+  }
+  if (type === 'rig') return "🔧";
+  return "📦";
+};
+
+// --- SVG MATH ---
 const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
   const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
   return { x: centerX + (radius * Math.cos(angleInRadians)), y: centerY + (radius * Math.sin(angleInRadians)) };
@@ -54,10 +71,7 @@ const CollapsiblePanel = ({ title, children, defaultOpen = true }: any) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
     <div className="bg-gray-800/80 rounded border border-gray-700 shadow-lg overflow-hidden transition-all duration-300">
-      <button 
-        onClick={() => setIsOpen(!isOpen)} 
-        className="w-full flex justify-between items-center p-3 bg-gray-800 hover:bg-gray-700 transition-colors focus:outline-none border-b border-gray-700"
-      >
+      <button onClick={() => setIsOpen(!isOpen)} className="w-full flex justify-between items-center p-3 bg-gray-800 hover:bg-gray-700 transition-colors focus:outline-none border-b border-gray-700">
         <h3 className="text-sm font-bold text-gray-200">{title}</h3>
         <span className={`text-gray-400 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
       </button>
@@ -66,7 +80,7 @@ const CollapsiblePanel = ({ title, children, defaultOpen = true }: any) => {
   );
 };
 
-// --- SVG KOMPONENTEN FÜR FESTE 8 SLOTS ---
+// --- SVG KOMPONENTEN ---
 const SvgSlotGroup = ({ activeCount, centerAngle, innerRadius, outerRadius, activeFill, activeStroke, iconType, onSlotClick, fittedModules }: any) => {
   const MAX_SLOTS = 8;
   const FIXED_SWEEP = 8;
@@ -98,11 +112,7 @@ const SvgSlotGroup = ({ activeCount, centerAngle, innerRadius, outerRadius, acti
 
         return (
           <g key={i} className="group" onClick={() => { if (isActive && onSlotClick) onSlotClick(iconType, i); }}>
-            <path 
-              d={pathData} 
-              className={isActive ? `${fillClass} ${strokeColor} opacity-90 hover:brightness-125 transition-all` : `fill-transparent stroke-gray-700 opacity-30`} 
-              strokeWidth="1.5" 
-            />
+            <path d={pathData} className={isActive ? `${fillClass} ${strokeColor} opacity-90 hover:brightness-125 transition-all` : `fill-transparent stroke-gray-700 opacity-30`} strokeWidth="1.5" />
             {Icon && <g transform={`translate(${iconPos.x}, ${iconPos.y}) rotate(${centerSlotAngle}) scale(1.3)`}>{Icon}</g>}
           </g>
         );
@@ -158,7 +168,6 @@ const StatArc = ({ startAngle, endAngle, radius, strokeClass, text, textColorCla
   );
 };
 
-// --- BAUSTEINE FÜR DAS RECHTE PANEL ---
 const StatRow = ({ label, value, unit = "", highlight = false }: { label: string, value: any, unit?: string, highlight?: boolean }) => (
   <div className={`flex justify-between items-center py-1.5 border-b border-gray-800/50 hover:bg-gray-800/80 px-1 rounded transition-colors ${highlight ? 'text-green-400 font-bold' : 'text-gray-400'}`}>
     <span className="text-sm">{label}</span>
@@ -183,15 +192,29 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [selectedShip, setSelectedShip] = useState<Ship | null>(null);
 
+  const [allModules, setAllModules] = useState<any[]>([]);
   const [fittedModules, setFittedModules] = useState<any>({ high: [], mid: [], low: [], rig: [] });
   const [simStats, setSimStats] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState(false);
-
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activeSlot, setActiveSlot] = useState<{ type: string, index: number } | null>(null);
-
-  // --- NEU: Ansichts-Schalter (Wheel vs. Pyfa List) ---
   const [viewMode, setViewMode] = useState<"wheel" | "list">("wheel");
+
+  // State für die einklappbaren Ordner in der linken Liste
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const fetchModules = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/modules`);
+        const data = await res.json();
+        setAllModules(data);
+      } catch (e) {
+        console.error("Fehler beim Laden der Module:", e);
+      }
+    };
+    fetchModules();
+  }, []);
 
   const fetchShips = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -316,10 +339,9 @@ export default function Home() {
   const hullExpl = simStats ? simStats.resists.hull.explosive : selectedShip?.hull_expl_res || 0;
 
 
-  // --- HILFSFUNKTION: Render Pyfa Listen-Kategorie ---
+  // --- PYFA LIST RENDERER ---
   const renderListCategory = (title: string, type: string, maxSlots?: number) => {
     if (!maxSlots || maxSlots === 0) return null;
-    
     return (
       <div className="mb-6">
         <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest border-b border-gray-700 pb-1 mb-2">
@@ -328,8 +350,7 @@ export default function Home() {
         <div className="flex flex-col gap-1">
           {Array.from({ length: maxSlots }).map((_, i) => {
             const moduleId = fittedModules[type][i];
-            const mod = moduleId ? MOCK_MODULES.find(m => m.id === moduleId) : null;
-            
+            const mod = moduleId ? allModules.find(m => m.id === moduleId) : null;
             return (
               <div 
                 key={i}
@@ -338,20 +359,14 @@ export default function Home() {
               >
                 <div className="flex items-center gap-3">
                    <div className="w-8 h-8 bg-gray-900 rounded flex items-center justify-center text-sm shadow-inner border border-gray-700">
-                     {mod ? mod.icon : '+'}
+                     {mod ? getModuleIcon(mod.type, mod.name) : '+'}
                    </div>
                    <span className={`text-sm ${mod ? 'text-gray-200 font-bold' : 'text-gray-600 italic'}`}>
                      {mod ? mod.name : `Leerer Slot`}
                    </span>
                 </div>
                 {mod && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); unequipModule(type, i); }}
-                    className="text-red-500 hover:text-red-400 p-2 hover:bg-red-500/20 rounded transition-colors"
-                    title="Modul ausbauen"
-                  >
-                    ✖
-                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); unequipModule(type, i); }} className="text-red-500 hover:text-red-400 p-2 hover:bg-red-500/20 rounded transition-colors" title="Modul ausbauen">✖</button>
                 )}
               </div>
             );
@@ -359,6 +374,29 @@ export default function Home() {
         </div>
       </div>
     );
+  };
+
+  // --- BERECHNETE, GRUPPIERTE MODULE FÜR DIE LINKE SEITENLEISTE ---
+  const groupedModules = useMemo(() => {
+    const isSearching = moduleSearch.trim().length > 0;
+    const filtered = isSearching 
+      ? allModules.filter(m => m.name.toLowerCase().includes(moduleSearch.toLowerCase()) || m.group.toLowerCase().includes(moduleSearch.toLowerCase()))
+      : allModules;
+
+    const grouped: any = { high: {}, mid: {}, low: {}, rig: {} };
+    
+    filtered.forEach(mod => {
+      if (grouped[mod.type]) {
+        if (!grouped[mod.type][mod.group]) grouped[mod.type][mod.group] = [];
+        grouped[mod.type][mod.group].push(mod);
+      }
+    });
+
+    return { grouped, isSearching };
+  }, [allModules, moduleSearch]);
+
+  const toggleFolder = (folderKey: string) => {
+    setOpenFolders(prev => ({ ...prev, [folderKey]: !prev[folderKey] }));
   };
 
   return (
@@ -372,34 +410,21 @@ export default function Home() {
                 ← Anderes Schiff suchen
               </button>
               
-              {/* --- TOGGLE BUTTONS --- */}
               <div className="bg-gray-800 p-1 rounded-lg border border-gray-700 flex shadow-lg">
-                <button 
-                  onClick={() => setViewMode('wheel')} 
-                  className={`px-6 py-2 text-sm font-bold uppercase tracking-widest rounded transition-all ${viewMode === 'wheel' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
-                >
-                  Wheel
-                </button>
-                <button 
-                  onClick={() => setViewMode('list')} 
-                  className={`px-6 py-2 text-sm font-bold uppercase tracking-widest rounded transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
-                >
-                  Pyfa List
-                </button>
+                <button onClick={() => setViewMode('wheel')} className={`px-6 py-2 text-sm font-bold uppercase tracking-widest rounded transition-all ${viewMode === 'wheel' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>Wheel</button>
+                <button onClick={() => setViewMode('list')} className={`px-6 py-2 text-sm font-bold uppercase tracking-widest rounded transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>Pyfa List</button>
               </div>
             </div>
 
-            {/* 3-SPALTEN LAYOUT */}
             <div className="flex flex-col xl:flex-row gap-6 justify-between items-start">
               
-              {/* === LINKE SEITE: MODULE BROWSER === */}
-              {/* Die Modul-Suche bleibt auf 600px Höhe fixiert (als Sticky Element könnte sie auch scrollen, aber so bleibt sie im Blickfeld) */}
-              <div className="w-full xl:w-1/4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-xl overflow-hidden flex flex-col h-[600px] sticky top-8">
+              {/* === LINKE SEITE: MODULE BROWSER (Akkordeon) === */}
+              <div className="w-full xl:w-1/4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-xl overflow-hidden flex flex-col h-[75vh] sticky top-8">
                 <div className="p-4 bg-gray-800 border-b border-gray-700">
-                  <h2 className="text-sm font-bold text-gray-200 uppercase tracking-widest mb-3">Hardware</h2>
+                  <h2 className="text-sm font-bold text-gray-200 uppercase tracking-widest mb-3">Hardware ({allModules.length})</h2>
                   <input 
                     type="text" 
-                    placeholder="Modul suchen..." 
+                    placeholder="Suchen (Laser, Shield, Web)..." 
                     value={moduleSearch}
                     onChange={(e) => setModuleSearch(e.target.value)}
                     className="w-full p-2 rounded bg-gray-900 border border-gray-600 focus:border-blue-500 outline-none text-sm"
@@ -407,32 +432,64 @@ export default function Home() {
                 </div>
                 
                 <div className="flex-grow overflow-y-auto custom-scrollbar p-2">
-                  {MOCK_MODULES
-                    .filter(m => m.name.toLowerCase().includes(moduleSearch.toLowerCase()))
-                    .map(module => (
-                      <div 
-                        key={module.id} 
-                        onClick={() => equipModule(module)}
-                        className="flex items-center gap-3 p-2 mb-1 bg-gray-900/50 hover:bg-blue-900/40 border border-transparent hover:border-blue-700 rounded cursor-pointer transition-colors group"
-                      >
-                        <div className="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-600 rounded text-sm group-hover:border-blue-500">
-                          {module.icon}
+                  {allModules.length === 0 && <p className="text-gray-500 text-center text-xs mt-4">Lade EVE Module...</p>}
+                  
+                  {['high', 'mid', 'low', 'rig'].map(slotType => {
+                    const groups = groupedModules.grouped[slotType];
+                    if (Object.keys(groups).length === 0) return null;
+
+                    return (
+                      <div key={slotType} className="mb-4">
+                        <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-700 pb-1 mb-2 ml-1">
+                          {slotType.toUpperCase()} SLOTS
                         </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-200 group-hover:text-blue-300">{module.name}</p>
-                          <p className="text-[10px] uppercase tracking-widest text-gray-500 group-hover:text-blue-400">{module.type} Slot</p>
-                        </div>
+                        
+                        {Object.keys(groups).sort().map(groupName => {
+                          const folderKey = `${slotType}-${groupName}`;
+                          // Wenn gesucht wird, klappen wir automatisch auf
+                          const isOpen = groupedModules.isSearching || openFolders[folderKey];
+                          const modsInGroup = groups[groupName];
+
+                          return (
+                            <div key={folderKey} className="mb-1">
+                              <button 
+                                onClick={() => toggleFolder(folderKey)}
+                                className="w-full text-left p-2 bg-gray-800 hover:bg-gray-700 rounded text-xs font-bold text-gray-300 flex justify-between items-center transition-colors"
+                              >
+                                <span className="truncate pr-2">📁 {groupName}</span>
+                                <span className="text-gray-500 text-[10px]">{modsInGroup.length}</span>
+                              </button>
+                              
+                              {isOpen && (
+                                <div className="pl-3 mt-1 flex flex-col gap-1 border-l border-gray-700 ml-3">
+                                  {modsInGroup.map((module: any) => (
+                                    <div 
+                                      key={module.id} 
+                                      onClick={() => equipModule(module)}
+                                      className="flex items-center gap-2 p-1.5 bg-gray-900/30 hover:bg-blue-900/40 rounded cursor-pointer group"
+                                    >
+                                      <div className="text-xs group-hover:scale-110 transition-transform">
+                                        {getModuleIcon(module.type, module.name)}
+                                      </div>
+                                      <p className="text-[11px] font-semibold text-gray-400 group-hover:text-blue-300 truncate">{module.name}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
 
-              {/* === MITTE: FITTING ANSICHT (WHEEL ODER LISTE) === */}
+              {/* === MITTE: FITTING ANSICHT === */}
               <div className="w-full xl:w-2/4 flex justify-center">
                 
                 {viewMode === 'wheel' ? (
-                  // --- WHEEL VIEW ---
                   <div className="relative w-[360px] h-[360px] md:w-[600px] md:h-[600px] flex-shrink-0 bg-gray-900 rounded-full shadow-[0_0_80px_rgba(0,0,0,0.8)] border border-gray-800 animate-fade-in">
                     <div className="absolute inset-0 m-auto w-32 h-32 md:w-48 md:h-48 bg-gray-800/80 rounded-full border border-gray-600 flex flex-col items-center justify-center shadow-lg z-10">
                       <h2 className="text-lg md:text-2xl font-bold text-white text-center leading-tight px-2 drop-shadow-md">{selectedShip.name}</h2>
@@ -458,7 +515,6 @@ export default function Home() {
                     </svg>
                   </div>
                 ) : (
-                  // --- PYFA LIST VIEW (Jetzt extended!) ---
                   <div className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-6 animate-fade-in shadow-xl">
                     <div className="flex justify-between items-start mb-6 border-b border-gray-700 pb-4">
                       <div>
@@ -479,7 +535,6 @@ export default function Home() {
                     {renderListCategory("Rig Slots", "rig", selectedShip.rig_slots)}
                   </div>
                 )}
-
               </div>
 
               {/* === RECHTE SEITE: EINKLAPPBARE STATS PANELS === */}
@@ -553,7 +608,6 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          /* SUCHE ANSICHT */
           <div className="max-w-3xl mx-auto mt-20">
             <h1 className="text-5xl font-black mb-10 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-gray-400 tracking-tighter text-center">
               EVE <span className="text-gray-200">PYFA</span> WEB
@@ -576,7 +630,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* MODAL FÜR MANUELLE SLOT-WAHL (Aus Wheel oder Liste) */}
       {pickerOpen && activeSlot && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] backdrop-blur-sm">
           <div className="bg-gray-800 border border-gray-600 p-6 rounded-lg w-96 max-w-full shadow-2xl">
