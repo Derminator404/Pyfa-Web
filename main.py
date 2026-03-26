@@ -2,7 +2,7 @@
 from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel # NEU
-from typing import List, Optional
+from typing import List, Optional, Union, Dict
 import sqlite3
 import traceback
 
@@ -46,14 +46,14 @@ def get_attributes(ship_id: int, db: sqlite3.Connection = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# NEU: rig_slots hinzugefügt
+# Wir erlauben nun ints (altes Format) UND Dictionaries (neues Format mit States)
 class FitSimulationRequest(BaseModel):
     ship_id: int
-    high_slots: List[int] = []
-    mid_slots: List[int] = []
-    low_slots: List[int] = []
-    rig_slots: List[int] = []  # <--- WICHTIG
-    charges: List[int] = []
+    low_slots: List[Union[int, Dict[str, int]]] = []
+    mid_slots: List[Union[int, Dict[str, int]]] = []
+    high_slots: List[Union[int, Dict[str, int]]] = []
+    rig_slots: List[Union[int, Dict[str, int]]] = []
+    charges: List[Optional[int]] = []
 
 # NEU: Modul-Liste anfragen
 @app.get("/modules", tags=["Datenbank"])

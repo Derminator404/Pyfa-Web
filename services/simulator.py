@@ -1,4 +1,5 @@
 import os
+from eos.const.eve import AttrId
 
 from eos.data_handler.json_data_handler import JsonDataHandler
 from eos.cache_handler.json_cache_handler import JsonCacheHandler
@@ -8,7 +9,9 @@ from eos.item.skill import Skill
 from eos.item.ship import Ship
 from eos.fit import Fit
 
+# Wir nutzen hier Module für Rigs, da dies die EVE-Effekte korrekt auslöst
 from eos.item.module import ModuleLow, ModuleMid, ModuleHigh, Module
+from eos.item.rig import Rig
 from eos.item.charge import Charge
 from eos.effect_status import State
 
@@ -49,25 +52,80 @@ class EosSimulator:
         for skill_id in self.all_v_skill_ids:
             fit.skills.add(Skill(skill_id, level=5))
 
-        for item_id in low_slots:
-            try: fit.modules.low.equip(ModuleLow(item_id, state=State.active))
-            except: pass
-            
-        for item_id in mid_slots:
-            try: fit.modules.mid.equip(ModuleMid(item_id, state=State.active))
-            except: pass
-            
-        for i, item_id in enumerate(high_slots):
-            try:
-                if i < len(charges) and charges[i]:
-                    fit.modules.high.equip(ModuleHigh(item_id, state=State.active, charge=Charge(charges[i])))
-                else:
-                    fit.modules.high.equip(ModuleHigh(item_id, state=State.active))
-            except: pass
+        # --- SICHERE STATE UMWANDLUNG ---
+        def get_state_enum(val):
+            try: val = int(val)
+            except: val = 3
+            if val == 1: return State.offline
+            if val == 2: return State.online
+            if val == 3: return State.active
+            if val == 4: return State.overload
+            return State.active
 
-        for item_id in rig_slots:
-            try: fit.modules.rig.equip(Module(item_id, state=State.online))
-            except: pass
+        # --- 1. LOGIK FÜR NORMALE MODULE (LOW, MID) ---
+        def equip_modules(rack, module_class, slots_data, rack_name):
+            for item in slots_data:
+                if not item: continue
+                try:
+                    # Frontend sendet Dictionaries mit ID und State
+                    if isinstance(item, dict):
+                        item_id = int(item.get("id", 0))
+                        state_val = int(item.get("state", 3))
+                    else:
+                        item_id = int(item)
+                        state_val = 3
+                    
+                    if item_id > 0:
+                        mod = module_class(item_id, state=get_state_enum(state_val))
+                        rack.equip(mod)
+                except Exception as e:
+                    print(f"[Simulator] Fehler beim Fitten in {rack_name}: {e}")
+
+        equip_modules(fit.modules.low, ModuleLow, low_slots, "LOW SLOTS")
+        equip_modules(fit.modules.mid, ModuleMid, mid_slots, "MID SLOTS")
+
+        # --- 2. EIGENE LOGIK FÜR RIGS (OHNE STATE) ---
+        print("[Simulator] Bestücke RIG SLOTS...")
+        for item in rig_slots:
+            if not item: continue
+            try:
+                # Da das Frontend weiterhin ein Dict {id, state} sendet, extrahieren wir nur die ID!
+                item_id = int(item.get("id", 0)) if isinstance(item, dict) else int(item)
+                
+                if item_id > 0:
+                    rig_item = Rig(item_id) # <- Kein State! Ein Rig ist einfach nur ein Rig.
+                    
+                    # Dynamisches Einfügen, da fit.rigs je nach EOS-Version ein Rack oder ItemSet ist
+                    if hasattr(fit.rigs, 'equip'):
+                        fit.rigs.equip(rig_item)
+                    elif hasattr(fit.rigs, 'add'):
+                        fit.rigs.add(rig_item)
+                    elif hasattr(fit.rigs, 'append'):
+                        fit.rigs.append(rig_item)
+                        
+                    print(f"[Simulator] -> RIG Slot: ID {item_id} erfolgreich eingebaut.")
+            except Exception as e:
+                print(f"[Simulator] -> FEHLER beim Fitten eines Rigs: {e}")
+
+        # --- 3. LOGIK FÜR HIGH SLOTS (MIT CHARGES) ---
+        print("[Simulator] Bestücke HIGH SLOTS...")
+        for i, item in enumerate(high_slots):
+            if not item: continue
+            try:
+                if isinstance(item, dict):
+                    item_id = int(item.get("id", 0))
+                    state_val = int(item.get("state", 3))
+                else:
+                    item_id = int(item)
+                    state_val = 3
+                
+                if item_id > 0:
+                    mod = ModuleHigh(item_id, state=get_state_enum(state_val))
+                    if i < len(charges) and charges[i]:
+                        mod.charge = Charge(charges[i])
+                    fit.modules.high.equip(mod)
+            except Exception as e:
+                print(f"[Simulator] -> FEHLER beim Fitten High Slot: {e}")
 
         # --- AUTO-HEAL FÜR PASSIVE MODULE ---
         validation_errors = None
@@ -96,26 +154,100 @@ class EosSimulator:
         from eos.stats_container import DmgProfile
         ehp = fit.stats.get_ehp(DmgProfile(em=25, thermal=25, kinetic=25, explosive=25)).total
         dps = fit.stats.get_dps(reload=False).total
+        
+        try: volley = fit.stats.get_volley().total
+        except: volley = 0.0
 
-        # --- ROBUSTE WERT-ABFRAGE DIREKT ÜBER EVE DATENBANK IDs ---
         def get_attr(attr_id, default=0.0):
-            try:
-                return float(fit.ship.attrs[attr_id])
-            except:
-                return default
+            try: return float(fit.ship.attrs[attr_id])
+            except: return default
 
-        max_speed = get_attr(37)       # 37 = maxVelocity
-        mass = get_attr(4)             # 4 = mass
-        shield_hp = get_attr(263)      # 263 = shieldCapacity
-        armor_hp = get_attr(265)       # 265 = armorHP
-        hull_hp = get_attr(9)          # 9 = hp (Hull)
-        cap_capacity = get_attr(482)   # 482 = capacitorCapacity
-        cap_recharge = get_attr(55)    # 55 = rechargeRate
-        cargo_capacity = get_attr(38)  # 38 = capacity (Cargo)
+        max_speed = get_attr(37)       
+        mass = get_attr(4)             
+        shield_hp = get_attr(263)      
+        armor_hp = get_attr(265)       
+        hull_hp = get_attr(9)          
+        cargo_capacity = get_attr(38)  
+
+        # --- CAPACITOR LOGIK ---
+        cap_capacity = get_attr(482)
+        cap_recharge_time_ms = get_attr(55)
+        
+        peak_recharge = 0.0
+        if cap_recharge_time_ms > 0:
+            peak_recharge = (2.5 * cap_capacity) / (cap_recharge_time_ms / 1000.0)
+
+        cap_use = 0.0
+        cap_depletes_in = 0.0
+        cap_stable_fraction = 1.0
+        cap_is_stable = True
+
+        try:
+            cap_stat = fit.stats.get_capacitor()
+            cap_use = getattr(cap_stat, 'total_use', 0.0)
+            
+            depletes = getattr(cap_stat, 'depletes_in', None)
+            if depletes is not None and depletes > 0:
+                cap_is_stable = False
+                cap_depletes_in = float(depletes)
+                cap_stable_fraction = 0.0
+            else:
+                cap_is_stable = True
+                cap_depletes_in = 0.0
+                cap_stable_fraction = float(getattr(cap_stat, 'fraction', 1.0))
+        except:
+            for rack in (fit.modules.high, fit.modules.mid, fit.modules.low):
+                for mod in rack:
+                    if getattr(mod, 'state', None) in (State.active, State.overload):
+                        try:
+                            c_need = float(mod.attrs.get(50, 0))
+                            dur = float(mod.attrs.get(73, 1000)) / 1000.0
+                            if dur > 0: 
+                                cap_use += (c_need / dur)
+                        except: pass
+            
+            if cap_use > peak_recharge:
+                cap_is_stable = False
+                diff = cap_use - peak_recharge
+                cap_depletes_in = cap_capacity / diff if diff > 0 else 0
+                cap_stable_fraction = 0.0
+            else:
+                cap_is_stable = True
+                cap_depletes_in = 0.0
+                cap_stable_fraction = 1.0
+
+        cap_delta = peak_recharge - cap_use
+
+        max_targets = get_attr(98)
+        sig_radius = get_attr(552)
+        scan_res = get_attr(564)
+        sensor_str = max(get_attr(208), get_attr(209), get_attr(210), get_attr(211))
+        warp_speed = get_attr(600)
+        drone_range = get_attr(1224) / 1000.0 if get_attr(1224) else 0.0
+        lock_range = get_attr(76) / 1000.0 if get_attr(76) else 0.0
+
+        shield_recharge_time = get_attr(479)
+        passive_shield = (2.5 * shield_hp) / (shield_recharge_time / 1000.0) if shield_recharge_time > 0 else 0.0
+
+        active_shield = 0.0
+        active_armor = 0.0
+        active_hull = 0.0
+
+        for rack in (fit.modules.high, fit.modules.mid, fit.modules.low):
+            for mod in rack:
+                st = getattr(mod, 'state', None)
+                if st in (State.active, State.overload):
+                    try:
+                        dur = float(mod.attrs[73]) / 1000.0 
+                        if dur > 0:
+                            if 68 in mod.attrs: active_shield += float(mod.attrs[68]) / dur  
+                            if 84 in mod.attrs: active_armor += float(mod.attrs[84]) / dur   
+                            if 83 in mod.attrs: active_hull += float(mod.attrs[83]) / dur    
+                    except:
+                        pass
 
         drone_bw_used = getattr(fit.stats.drone_bandwidth, 'used', 0.0)
         drone_bw_total = getattr(fit.stats.drone_bandwidth, 'total', getattr(fit.stats.drone_bandwidth, 'output', 0.0))
-        
         dronebay_used = getattr(fit.stats.dronebay, 'used', 0.0)
         dronebay_total = getattr(fit.stats.dronebay, 'total', getattr(fit.stats.dronebay, 'output', 0.0))
 
@@ -128,9 +260,23 @@ class EosSimulator:
                 "explosive": round(layer.explosive * 100, 1)
             }
 
+        def get_states(rack):
+            out = []
+            for m in rack:
+                st = getattr(m, 'state', State.offline)
+                try: out.append(st.value)
+                except AttributeError: out.append(int(st))
+            return out
+
         return {
             "is_valid": validation_errors is None,
             "errors": validation_errors,
+            "module_states": {
+                "high": get_states(fit.modules.high),
+                "mid": get_states(fit.modules.mid),
+                "low": get_states(fit.modules.low),
+#                "rig": get_states(fit.rigs) 
+            },
             "stats": {
                 "powergrid_used": round(getattr(fit.stats.powergrid, 'used', 0.0), 1),
                 "powergrid_total": round(getattr(fit.stats.powergrid, 'output', getattr(fit.stats.powergrid, 'total', 0.0)), 1),
@@ -142,11 +288,34 @@ class EosSimulator:
                 "dronebay_total": round(dronebay_total, 1),
                 "ehp": round(ehp, 2),
                 "dps": round(dps, 2),
+                "volley": round(volley, 0),
                 "shield_hp": round(shield_hp, 0),
                 "armor_hp": round(armor_hp, 0),
                 "hull_hp": round(hull_hp, 0),
+                "passive_shield": round(passive_shield, 1),
+                "active_shield": round(active_shield, 1),
+                "active_armor": round(active_armor, 1),
+                "active_hull": round(active_hull, 1),
+                "max_targets": int(max_targets),
+                "sig_radius": round(sig_radius, 1),
+                "scan_res": round(scan_res, 1),
+                "sensor_str": round(sensor_str, 1),
+                "warp_speed": round(warp_speed, 2),
+                "drone_range": round(drone_range, 1),
+                "lock_range": round(lock_range, 1),
+                
                 "cap_capacity": round(cap_capacity, 1),
-                "cap_recharge": round(cap_recharge, 1),
+                "cap_recharge": round(cap_recharge_time_ms, 1),
+                "cap_use": round(cap_use, 1),
+                "cap_delta": round(cap_delta, 1), 
+                "cap_is_stable": cap_is_stable,
+                "cap_depletes_in": round(cap_depletes_in, 1),
+                "cap_stable_fraction": round(cap_stable_fraction * 100, 1),
+
+                # --- NEU: CALIBRATION (MODIFICATION POINTS) ---
+                "calibration_used": round(getattr(fit.stats.calibration, 'used', 0.0), 1),
+                "calibration_total": round(getattr(fit.stats.calibration, 'output', getattr(fit.stats.calibration, 'total', 0.0)), 1),
+                
                 "cargo_capacity": round(cargo_capacity, 1),
                 "max_velocity": round(max_speed, 1),
                 "mass": round(mass, 1),

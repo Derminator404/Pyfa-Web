@@ -45,197 +45,101 @@ const getModuleIcon = (type: string, name: string) => {
   return "📦";
 };
 
-// --- SVG MATH ---
-const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
-  const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
-  return { x: centerX + (radius * Math.cos(angleInRadians)), y: centerY + (radius * Math.sin(angleInRadians)) };
-};
-
-const describeArc = (x: number, y: number, innerRadius: number, outerRadius: number, startAngle: number, endAngle: number) => {
-  const startOuter = polarToCartesian(x, y, outerRadius, endAngle);
-  const endOuter = polarToCartesian(x, y, outerRadius, startAngle);
-  const startInner = polarToCartesian(x, y, innerRadius, endAngle);
-  const endInner = polarToCartesian(x, y, innerRadius, startAngle);
-  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
-  return [
-    "M", startOuter.x, startOuter.y,
-    "A", outerRadius, outerRadius, 0, largeArcFlag, 0, endOuter.x, endOuter.y,
-    "L", endInner.x, endInner.y,
-    "A", innerRadius, innerRadius, 0, largeArcFlag, 1, startInner.x, startInner.y,
-    "Z"
-  ].join(" ");
-};
-
-// --- EINKLAPPBARES PANEL ---
-const CollapsiblePanel = ({ title, children, defaultOpen = true }: any) => {
+// --- EINKLAPPBARES PANEL (Pyfa Style) ---
+const CollapsiblePanel = ({ title, children, defaultOpen = true, extraText = "" }: any) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   return (
-    <div className="bg-gray-800/80 rounded border border-gray-700 shadow-lg overflow-hidden transition-all duration-300 mb-3 shrink-0">
-      <button onClick={() => setIsOpen(!isOpen)} className="w-full flex justify-between items-center p-3 bg-gray-800 hover:bg-gray-700 transition-colors focus:outline-none border-b border-gray-700">
-        <h3 className="text-sm font-bold text-gray-200">{title}</h3>
-        <span className={`text-gray-400 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+    <div className="border-b border-gray-700 bg-gray-900/50 flex flex-col shrink-0">
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        className="w-full flex justify-between items-center px-1 py-0.5 bg-gray-800/80 hover:bg-gray-700 transition-colors focus:outline-none"
+      >
+        <div className="flex items-center gap-1">
+          <span className={`text-[10px] text-gray-400 transform transition-transform ${isOpen ? 'rotate-90' : 'rotate-0'}`}>▶</span>
+          <h3 className="text-[11px] font-bold text-gray-200 tracking-wide">{title} {extraText && <span className="font-normal text-gray-400 ml-1">{extraText}</span>}</h3>
+        </div>
+        <span className="text-[10px] text-gray-500">≡</span>
       </button>
-      {isOpen && <div className="p-3 flex flex-col gap-1 bg-gray-900/40">{children}</div>}
+      {isOpen && <div className="p-1.5 flex flex-col gap-1">{children}</div>}
     </div>
+  );
+};
+
+// --- PYFA RESOURCE BAR ---
+const ResourceBar = ({ label, used, total, unit, percent, icon }: any) => {
+  const isOver = used > total && total > 0;
+  return (
+    <div className="flex flex-col text-[10px] font-mono">
+      <div className="flex justify-between items-center px-1">
+        <span className="text-gray-400">{icon}</span>
+        <span className={isOver ? "text-red-400" : "text-gray-300"}>{used.toFixed(1)} / {total.toFixed(total % 1 === 0 ? 0 : 1)} {unit}</span>
+      </div>
+      <div className="bg-gray-900 border border-gray-700 h-4 relative mt-0.5 shadow-inner">
+        <div className={`h-full ${isOver ? 'bg-red-800' : 'bg-gray-600'}`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
+        <div className="absolute inset-0 flex items-center justify-center text-white text-[9px] drop-shadow-md">
+          {percent.toFixed(2)}%
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- PYFA RESISTANCE CELL ---
+const ResCell = ({ value, color }: { value: number, color: string }) => {
+  const safeValue = value || 0;
+  return (
+    <div className="relative w-full h-5 bg-gray-800 border border-gray-700 flex items-center justify-center shadow-inner overflow-hidden">
+      <div className={`absolute left-0 top-0 h-full ${color} opacity-60`} style={{ width: `${safeValue}%` }}></div>
+      <span className="relative z-10 text-[10px] font-mono text-gray-100 drop-shadow-[0_1px_1px_rgba(0,0,0,1)]">{safeValue.toFixed(1)}%</span>
+    </div>
+  );
+};
+
+// --- STATE INDICATOR BUTTON ---
+const StateIndicator = ({ state, onClick }: any) => {
+  const colors: any = { 1: 'bg-gray-600', 2: 'bg-blue-500', 3: 'bg-green-500', 4: 'bg-red-500' };
+  const labels: any = { 1: 'OFF', 2: 'ON', 3: 'ACT', 4: 'OVL' };
+  return (
+    <button 
+      onClick={(e) => { e.stopPropagation(); onClick(); }} 
+      className={`w-7 h-4 rounded text-[8px] font-bold flex items-center justify-center text-white shadow-inner hover:brightness-125 transition-all ${colors[state] || 'bg-gray-600'}`}
+      title="Status ändern"
+    >
+      {labels[state] || '...'}
+    </button>
   );
 };
 
 // --- VERSCHACHTELTER ORDNER ---
 const RecursiveFolder = ({ name, folderData, isSearching, openFolders, toggleFolder, equipModule, pathKey }: any) => {
   const isOpen = isSearching || openFolders[pathKey];
-
   const getCount = (fd: any): number => {
     let count = fd._items.length;
     for (const key in fd._subfolders) count += getCount(fd._subfolders[key]);
     return count;
   };
   const totalCount = getCount(folderData);
-
   if (totalCount === 0) return null;
 
   return (
-    <div className="mb-1 ml-1">
-      <button
-        onClick={() => toggleFolder(pathKey)}
-        className="w-full text-left p-1.5 hover:bg-gray-700 rounded text-[11px] font-bold text-gray-300 flex justify-between items-center transition-colors border-l-2 border-transparent hover:border-blue-500"
-      >
+    <div className="mb-0.5 ml-1">
+      <button onClick={() => toggleFolder(pathKey)} className="w-full text-left p-1 hover:bg-gray-700 rounded text-[11px] font-bold text-gray-300 flex justify-between items-center">
         <span className="truncate pr-2">📁 {name}</span>
         <span className="text-gray-500 text-[9px]">{totalCount}</span>
       </button>
-
       {isOpen && (
-        <div className="pl-1 mt-1 flex flex-col gap-1 border-l border-gray-700 ml-2">
+        <div className="pl-1 mt-0.5 flex flex-col gap-0.5 border-l border-gray-700 ml-1.5">
           {Object.keys(folderData._subfolders).sort().map(subName => (
-            <RecursiveFolder
-              key={subName}
-              name={subName}
-              folderData={folderData._subfolders[subName]}
-              isSearching={isSearching}
-              openFolders={openFolders}
-              toggleFolder={toggleFolder}
-              equipModule={equipModule}
-              pathKey={`${pathKey}-${subName}`}
-            />
+            <RecursiveFolder key={subName} name={subName} folderData={folderData._subfolders[subName]} isSearching={isSearching} openFolders={openFolders} toggleFolder={toggleFolder} equipModule={equipModule} pathKey={`${pathKey}-${subName}`} />
           ))}
           {folderData._items.map((module: any) => (
-            <div
-              key={module.id}
-              onClick={() => equipModule(module)}
-              className="flex items-center gap-2 p-1.5 bg-gray-900/30 hover:bg-blue-900/40 rounded cursor-pointer group"
-            >
-              <div className="text-[11px] group-hover:scale-110 transition-transform">
-                {getModuleIcon(module.type, module.name)}
-              </div>
-              <p className="text-[10px] font-semibold text-gray-400 group-hover:text-blue-300 truncate">{module.name}</p>
+            <div key={module.id} onClick={() => equipModule(module)} className="flex items-center gap-1.5 p-1 hover:bg-blue-900/40 rounded cursor-pointer group">
+              <div className="text-[10px]">{getModuleIcon(module.type, module.name)}</div>
+              <p className="text-[10px] text-gray-400 group-hover:text-blue-300 truncate">{module.name}</p>
             </div>
           ))}
         </div>
       )}
-    </div>
-  );
-};
-
-// --- SVG KOMPONENTEN ---
-const SvgSlotGroup = ({ activeCount, centerAngle, innerRadius, outerRadius, activeFill, activeStroke, iconType, onSlotClick, fittedModules }: any) => {
-  const MAX_SLOTS = 8;
-  const FIXED_SWEEP = 8;
-  const GAP = 2;
-  const totalSweep = MAX_SLOTS * FIXED_SWEEP + (MAX_SLOTS - 1) * GAP;
-  const startAngle = centerAngle - (totalSweep / 2);
-  const iconRadius = (innerRadius + outerRadius) / 2;
-
-  return (
-    <g className="pointer-events-auto cursor-pointer">
-      {Array.from({ length: MAX_SLOTS }).map((_, i) => {
-        const isActive = i < (activeCount || 0);
-        const isFitted = isActive && fittedModules && fittedModules[iconType] && fittedModules[iconType][i] !== undefined && fittedModules[iconType][i] !== null;
-        
-        const sAngle = startAngle + i * (FIXED_SWEEP + GAP);
-        const eAngle = sAngle + FIXED_SWEEP;
-        const pathData = describeArc(300, 300, innerRadius, outerRadius, sAngle, eAngle);
-        const centerSlotAngle = sAngle + (FIXED_SWEEP / 2);
-        const iconPos = polarToCartesian(300, 300, iconRadius, centerSlotAngle);
-
-        let Icon = null;
-        if (isActive && iconType === 'high') Icon = <path d="M 0 -4 L 0 -1 M -3 3 L -1 1 M 3 3 L 1 1" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" />;
-        else if (isActive && iconType === 'mid') Icon = <path d="M -3 -1.5 L 3 -1.5 M -3 1.5 L 3 1.5" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" />;
-        else if (isActive && iconType === 'low') Icon = <path d="M -3 0 L 3 0" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" strokeLinecap="round" />;
-        else if (isActive && iconType === 'rig') Icon = <rect x="-4" y="-4" width="8" height="8" rx="2" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none" />;
-
-        const fillClass = isFitted ? "fill-blue-500/80" : activeFill;
-        const strokeColor = isFitted ? "stroke-blue-300" : activeStroke;
-
-        return (
-          <g key={i} className="group" onClick={() => { if (isActive && onSlotClick) onSlotClick(iconType, i); }}>
-            <path d={pathData} className={isActive ? `${fillClass} ${strokeColor} opacity-90 hover:brightness-125 transition-all` : `fill-transparent stroke-gray-700 opacity-30`} strokeWidth="1.5" />
-            {Icon && <g transform={`translate(${iconPos.x}, ${iconPos.y}) rotate(${centerSlotAngle}) scale(1.3)`}>{Icon}</g>}
-          </g>
-        );
-      })}
-    </g>
-  );
-};
-
-const SvgHardpointGroup = ({ activeCount, centerAngle, radius, activeFill, activeStroke }: any) => {
-  const MAX_SLOTS = 8;
-  const FIXED_SWEEP = 4;
-  const totalSweep = (MAX_SLOTS - 1) * FIXED_SWEEP;
-  const startAngle = centerAngle - (totalSweep / 2);
-
-  return (
-    <g>
-      {Array.from({ length: MAX_SLOTS }).map((_, i) => {
-        const isActive = i < (activeCount || 0);
-        const pos = polarToCartesian(300, 300, radius, startAngle + i * FIXED_SWEEP);
-        return <circle key={i} cx={pos.x} cy={pos.y} r="3.5" className={isActive ? `${activeFill} ${activeStroke} opacity-90` : `fill-transparent stroke-gray-700 opacity-30`} strokeWidth="1.5" />;
-      })}
-    </g>
-  );
-};
-
-const StatArc = ({ startAngle, endAngle, radius, strokeClass, text, textColorClass }: any) => {
-  const start = polarToCartesian(300, 300, radius, startAngle);
-  const end = polarToCartesian(300, 300, radius, endAngle);
-  const largeArcFlag = Math.abs(endAngle - startAngle) <= 180 ? "0" : "1";
-  const dLine = ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 1, end.x, end.y].join(" ");
-  const midAngle = (startAngle + endAngle) / 2;
-  const isBottom = midAngle > 90 && midAngle < 270;
-  let dText = "", textId = `path-${startAngle}-${endAngle}`.replace(/\./g, '');
-
-  if (isBottom) {
-    const tStart = polarToCartesian(300, 300, radius, endAngle);
-    const tEnd = polarToCartesian(300, 300, radius, startAngle);
-    dText = ["M", tStart.x, tStart.y, "A", radius, radius, 0, largeArcFlag, 0, tEnd.x, tEnd.y].join(" ");
-  } else {
-    const tStart = polarToCartesian(300, 300, radius, startAngle);
-    const tEnd = polarToCartesian(300, 300, radius, endAngle);
-    dText = ["M", tStart.x, tStart.y, "A", radius, radius, 0, largeArcFlag, 1, tEnd.x, tEnd.y].join(" ");
-  }
-
-  return (
-    <g>
-      <path d={dLine} className={strokeClass} strokeWidth="5" fill="none" strokeLinecap="round" opacity="0.9" />
-      <path id={textId} d={dText} fill="none" stroke="none" />
-      <text className={`text-[12px] font-bold tracking-widest uppercase ${textColorClass} drop-shadow-[0_2px_2px_rgba(0,0,0,1)]`} dy={isBottom ? "16" : "-8"}>
-        <textPath href={`#${textId}`} startOffset="50%" textAnchor="middle">{text}</textPath>
-      </text>
-    </g>
-  );
-};
-
-const StatRow = ({ label, value, unit = "", highlight = false }: { label: string, value: any, unit?: string, highlight?: boolean }) => (
-  <div className={`flex justify-between items-center py-1 border-b border-gray-800/50 hover:bg-gray-800/80 px-1 rounded transition-colors ${highlight ? 'text-green-400 font-bold' : 'text-gray-400'}`}>
-    <span className="text-xs">{label}</span>
-    <span className={`font-mono text-xs ${highlight ? 'text-green-400' : 'text-white'}`}>{value ?? "0"} <span className="opacity-50 text-[10px]">{unit}</span></span>
-  </div>
-);
-
-const ResCell = ({ value, color }: { value: number, color: string }) => {
-  const safeValue = value || 0;
-  return (
-    <div className="relative w-10 h-5 md:w-12 md:h-6 bg-gray-800 border border-gray-600 overflow-hidden flex items-center justify-center group rounded-sm">
-      <div className={`absolute left-0 top-0 h-full ${color} opacity-80 group-hover:opacity-100 transition-opacity`} style={{ width: `${safeValue}%` }}></div>
-      <span className="relative z-10 text-[9px] md:text-[10px] font-mono text-white drop-shadow-[0_1px_1px_rgba(0,0,0,1)]">{safeValue.toFixed(0)}%</span>
     </div>
   );
 };
@@ -251,21 +155,14 @@ export default function Home() {
   const [fittedModules, setFittedModules] = useState<any>({ high: [], mid: [], low: [], rig: [] });
   const [simStats, setSimStats] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [activeSlot, setActiveSlot] = useState<{ type: string, index: number } | null>(null);
-  const [viewMode, setViewMode] = useState<"wheel" | "list">("list"); 
-
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const fetchModules = async () => {
       try {
         const res = await fetch(`${API_BASE_URL}/modules`);
-        const data = await res.json();
-        setAllModules(data);
-      } catch (e) {
-        console.error("Fehler beim Laden der Module:", e);
-      }
+        setAllModules(await res.json());
+      } catch (e) { console.error(e); }
     };
     fetchModules();
   }, []);
@@ -283,147 +180,165 @@ export default function Home() {
   const handleShipClick = async (clickedShip: Ship) => {
     try {
       const res = await fetch(`${API_BASE_URL}/ships/${clickedShip.id}/attributes`);
-      const attributes = await res.json();
-      setSelectedShip({ ...clickedShip, ...attributes });
+      setSelectedShip({ ...clickedShip, ...(await res.json()) });
       setFittedModules({ high: [], mid: [], low: [], rig: [] });
       setSimStats(null);
     } catch (err: any) { alert("Fehler: " + err.message); }
   };
 
-  const handleSlotClick = (type: string, index: number) => {
-    setActiveSlot({ type, index });
-    setPickerOpen(true);
-  };
-
+  // --- EQUIP UND STATE LOGIK ---
   const equipModule = (module: any) => {
     if (!selectedShip) return;
+    const type = module.type;
+    const maxSlots = selectedShip[`${type}_slots` as keyof Ship] as number || 0;
+    
+    if (maxSlots === 0) return alert(`Keine ${type.toUpperCase()} Slots!`);
 
-    let maxSlots = 0;
-    if (module.type === 'high') maxSlots = selectedShip.high_slots || 0;
-    if (module.type === 'mid') maxSlots = selectedShip.mid_slots || 0;
-    if (module.type === 'low') maxSlots = selectedShip.low_slots || 0;
-    if (module.type === 'rig') maxSlots = selectedShip.rig_slots || 0;
-
-    if (maxSlots === 0) {
-      alert(`Dieses Schiff hat keine ${module.type.toUpperCase()} Slots!`);
-      return;
-    }
-
-    const currentTypeFit = [...fittedModules[module.type]];
+    const currentFit = [...fittedModules[type]];
     
     let emptyIndex = -1;
     for (let i = 0; i < maxSlots; i++) {
-      if (currentTypeFit[i] === undefined || currentTypeFit[i] === null) {
+      if (currentFit[i] === undefined || currentFit[i] === null) {
         emptyIndex = i;
         break;
       }
     }
-
+    
     if (emptyIndex !== -1) {
-      currentTypeFit[emptyIndex] = module.id;
-      const newFit = { ...fittedModules, [module.type]: currentTypeFit };
+      currentFit[emptyIndex] = { id: module.id, state: type === 'rig' ? 2 : 3 };
+      const newFit = { ...fittedModules, [type]: currentFit };
       setFittedModules(newFit);
       triggerSimulation(newFit);
     } else {
-      alert(`Alle ${module.type.toUpperCase()} Slots sind bereits voll!`);
+      alert(`Alle ${type.toUpperCase()} Slots sind voll!`);
     }
   };
 
   const unequipModule = (type: string, index: number) => {
-    const currentModule = fittedModules[type][index];
-    if (currentModule !== undefined && currentModule !== null) {
-      const newFit = JSON.parse(JSON.stringify(fittedModules));
-      newFit[type][index] = null; 
-      setFittedModules(newFit);
-      triggerSimulation(newFit);
+    const newFit = JSON.parse(JSON.stringify(fittedModules));
+    newFit[type][index] = null; 
+    setFittedModules(newFit);
+    triggerSimulation(newFit);
+  };
+
+  const toggleState = (type: string, index: number) => {
+    const mod = fittedModules[type][index];
+    if (!mod) return;
+    
+    let nextState = mod.state;
+    if (type === 'rig') {
+      nextState = mod.state === 2 ? 1 : 2; // Rigs: Online <-> Offline
+    } else {
+      // Der neue, smarte Cycle: OFF(1) -> ACT(3) -> OVL(4) -> ON(2) -> OFF(1)
+      if (mod.state === 1) nextState = 3;      // Von OFF zu Active (Backend korrigiert passive Module hier automatisch zu ON)
+      else if (mod.state === 3) nextState = 4; // Von Active zu Overload
+      else if (mod.state === 4) nextState = 2; // Von Overload zu Online
+      else if (mod.state === 2) nextState = 1; // Von Online zu OFF
     }
+    
+    const newFit = JSON.parse(JSON.stringify(fittedModules)); // WICHTIG: Deep Clone für State Update
+    newFit[type][index] = { ...mod, state: nextState };
+    setFittedModules(newFit);
+    triggerSimulation(newFit);
   };
 
   const triggerSimulation = async (currentFit: any) => {
     if (!selectedShip) return;
     setIsSimulating(true);
-    
     try {
       const requestBody = {
         ship_id: selectedShip.id,
-        high_slots: currentFit.high.filter((id: number | null) => id !== null && id !== undefined),
-        mid_slots: currentFit.mid.filter((id: number | null) => id !== null && id !== undefined),
-        low_slots: currentFit.low.filter((id: number | null) => id !== null && id !== undefined),
-        rig_slots: currentFit.rig.filter((id: number | null) => id !== null && id !== undefined),
+        high_slots: currentFit.high.filter((m:any) => m),
+        mid_slots: currentFit.mid.filter((m:any) => m),
+        low_slots: currentFit.low.filter((m:any) => m),
+        rig_slots: currentFit.rig.filter((m:any) => m),
         charges: []
       };
-
       const res = await fetch(`${API_BASE_URL}/simulate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody)
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(requestBody)
       });
-
-      if (!res.ok) throw new Error("Simulation fehlgeschlagen");
       const data = await res.json();
       
       if (data.is_valid) {
         setSimStats(data.stats);
-      } else {
-        console.error("Fitting Warnung:", data.errors);
+        
+        // Deep Clone, damit React rendert!
+        const syncedFit = JSON.parse(JSON.stringify(currentFit));
+        ['high', 'mid', 'low', 'rig'].forEach(type => {
+            const returnedStates = data.module_states[type] || [];
+            let stateIndex = 0;
+            syncedFit[type].forEach((mod: any) => {
+                if (mod) {
+                    mod.state = returnedStates[stateIndex] || mod.state;
+                    stateIndex++;
+                }
+            });
+        });
+        setFittedModules(syncedFit);
       }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsSimulating(false);
+    } finally { setIsSimulating(false); }
+  };
+
+  // --- DATEN AUFBEREITUNG ---
+  const cpuUsed = simStats ? simStats.cpu_used : 0;
+  const cpuTotal = simStats ? simStats.cpu_total : selectedShip?.cpu || 0;
+  const cpuPercent = cpuTotal > 0 ? (cpuUsed / cpuTotal) * 100 : 0;
+
+  const pgUsed = simStats ? simStats.powergrid_used : 0;
+  const pgTotal = simStats ? simStats.powergrid_total : selectedShip?.powergrid || 0;
+  const pgPercent = pgTotal > 0 ? (pgUsed / pgTotal) * 100 : 0;
+
+  // --- NEU: CALIBRATION ---
+  const calUsed = simStats ? simStats.calibration_used : 0;
+  const calTotal = simStats ? simStats.calibration_total : selectedShip?.calibration || 0;
+  const calPercent = calTotal > 0 ? (calUsed / calTotal) * 100 : 0;
+
+  const bwUsed = simStats ? simStats.drone_bandwidth_used : 0;
+  const bwTotal = simStats ? simStats.drone_bandwidth_total : 0;
+  const bwPercent = bwTotal > 0 ? (bwUsed / bwTotal) * 100 : 0;
+
+  const res = {
+    shield: {
+      em: simStats?.resists?.shield?.em ?? selectedShip?.shield_em_res ?? 0,
+      therm: simStats?.resists?.shield?.thermal ?? selectedShip?.shield_therm_res ?? 0,
+      kin: simStats?.resists?.shield?.kinetic ?? selectedShip?.shield_kin_res ?? 0,
+      exp: simStats?.resists?.shield?.explosive ?? selectedShip?.shield_expl_res ?? 0,
+      hp: simStats?.shield_hp ?? selectedShip?.shield_hp ?? 0
+    },
+    armor: {
+      em: simStats?.resists?.armor?.em ?? selectedShip?.armor_em_res ?? 0,
+      therm: simStats?.resists?.armor?.thermal ?? selectedShip?.armor_therm_res ?? 0,
+      kin: simStats?.resists?.armor?.kinetic ?? selectedShip?.armor_kin_res ?? 0,
+      exp: simStats?.resists?.armor?.explosive ?? selectedShip?.armor_expl_res ?? 0,
+      hp: simStats?.armor_hp ?? selectedShip?.armor_hp ?? 0
+    },
+    hull: {
+      em: simStats?.resists?.hull?.em ?? selectedShip?.hull_em_res ?? 0,
+      therm: simStats?.resists?.hull?.thermal ?? selectedShip?.hull_therm_res ?? 0,
+      kin: simStats?.resists?.hull?.kinetic ?? selectedShip?.hull_kin_res ?? 0,
+      exp: simStats?.resists?.hull?.explosive ?? selectedShip?.hull_expl_res ?? 0,
+      hp: simStats?.hull_hp ?? selectedShip?.hull_hp ?? 0
     }
   };
 
-  const cpuUsed = simStats ? simStats.cpu_used : 0;
-  const pgUsed = simStats ? simStats.powergrid_used : 0;
-  
-  const shieldEm = simStats ? simStats.resists.shield.em : selectedShip?.shield_em_res || 0;
-  const shieldTherm = simStats ? simStats.resists.shield.thermal : selectedShip?.shield_therm_res || 0;
-  const shieldKin = simStats ? simStats.resists.shield.kinetic : selectedShip?.shield_kin_res || 0;
-  const shieldExpl = simStats ? simStats.resists.shield.explosive : selectedShip?.shield_expl_res || 0;
-
-  const armorEm = simStats ? simStats.resists.armor.em : selectedShip?.armor_em_res || 0;
-  const armorTherm = simStats ? simStats.resists.armor.thermal : selectedShip?.armor_therm_res || 0;
-  const armorKin = simStats ? simStats.resists.armor.kinetic : selectedShip?.armor_kin_res || 0;
-  const armorExpl = simStats ? simStats.resists.armor.explosive : selectedShip?.armor_expl_res || 0;
-
-  const hullEm = simStats ? simStats.resists.hull.em : selectedShip?.hull_em_res || 0;
-  const hullTherm = simStats ? simStats.resists.hull.thermal : selectedShip?.hull_therm_res || 0;
-  const hullKin = simStats ? simStats.resists.hull.kinetic : selectedShip?.hull_kin_res || 0;
-  const hullExpl = simStats ? simStats.resists.hull.explosive : selectedShip?.hull_expl_res || 0;
-
-  const renderListCategory = (title: string, type: string, maxSlots?: number) => {
+  const renderSlotList = (type: string, maxSlots?: number) => {
     if (!maxSlots || maxSlots === 0) return null;
     return (
-      <div className="flex flex-col min-h-0 flex-shrink">
-        <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-700 pb-1 mb-1 shrink-0">
-          {title} <span className="text-gray-600 text-[10px] ml-2">({fittedModules[type].filter((x:any) => x).length}/{maxSlots})</span>
-        </h3>
-        <div className="flex flex-col flex-1 min-h-0 justify-evenly gap-[2px]">
-          {Array.from({ length: maxSlots }).map((_, i) => {
-            const moduleId = fittedModules[type][i];
-            const mod = moduleId ? allModules.find(m => m.id === moduleId) : null;
-            return (
-              <div 
-                key={i}
-                onClick={() => !mod && handleSlotClick(type, i)}
-                className={`flex items-center justify-between px-2 py-[2px] rounded border ${mod ? 'bg-gray-800 border-gray-600' : 'bg-gray-900/50 border-gray-800 border-dashed hover:border-blue-500 cursor-pointer'} transition-colors overflow-hidden shrink min-h-[26px]`}
-              >
-                <div className="flex items-center gap-2 overflow-hidden">
-                   <div className="w-5 h-5 shrink-0 bg-gray-900 rounded flex items-center justify-center text-[10px] shadow-inner border border-gray-700">
-                     {mod ? getModuleIcon(mod.type, mod.name) : '+'}
-                   </div>
-                   <span className={`text-[11px] truncate ${mod ? 'text-gray-200 font-bold' : 'text-gray-600 italic'}`}>
-                     {mod ? mod.name : `Leerer Slot`}
-                   </span>
-                </div>
-                {mod && (
-                  <button onClick={(e) => { e.stopPropagation(); unequipModule(type, i); }} className="text-red-500 hover:text-red-400 px-2 py-0.5 hover:bg-red-500/20 rounded transition-colors shrink-0 text-xs" title="Modul ausbauen">✖</button>
-                )}
+      <div className="flex flex-col flex-1 min-h-0 justify-evenly gap-[1px]">
+        {Array.from({ length: maxSlots }).map((_, i) => {
+          const fitItem = fittedModules[type][i];
+          const mod = fitItem ? allModules.find(m => m.id === fitItem.id) : null;
+          return (
+            <div key={i} className={`flex items-center justify-between px-1.5 py-0.5 rounded border ${mod ? 'bg-gray-800 border-gray-600' : 'bg-gray-900/50 border-gray-800 border-dashed'} overflow-hidden shrink min-h-[24px]`}>
+              <div className="flex items-center gap-2 overflow-hidden">
+                 {mod && <StateIndicator state={fitItem.state} onClick={() => toggleState(type, i)} />}
+                 <div className="w-4 h-4 shrink-0 flex items-center justify-center text-[10px]">{mod ? getModuleIcon(mod.type, mod.name) : '+'}</div>
+                 <span className={`text-[10px] truncate ${mod ? 'text-gray-200' : 'text-gray-600 italic'}`}>{mod ? mod.name : `Empty ${type.toUpperCase()}`}</span>
               </div>
-            );
-          })}
-        </div>
+              {mod && <button onClick={() => unequipModule(type, i)} className="text-red-500 hover:text-red-400 text-[10px] px-2 bg-red-900/20 rounded">✖</button>}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -433,305 +348,270 @@ export default function Home() {
     const filtered = isSearching 
       ? allModules.filter(m => m.name.toLowerCase().includes(moduleSearch.toLowerCase()) || m.group.toLowerCase().includes(moduleSearch.toLowerCase()))
       : allModules;
-
-    const grouped: any = { 
-      high: { _subfolders: {}, _items: [] }, 
-      mid: { _subfolders: {}, _items: [] }, 
-      low: { _subfolders: {}, _items: [] }, 
-      rig: { _subfolders: {}, _items: [] } 
-    };
-
+    const grouped: any = { high: { _subfolders: {}, _items: [] }, mid: { _subfolders: {}, _items: [] }, low: { _subfolders: {}, _items: [] }, rig: { _subfolders: {}, _items: [] } };
     filtered.forEach(mod => {
-      if (!mod.group) mod.group = "Unsortiert";
-      const pathParts = mod.group.split(' > ');
-      
+      const pathParts = (mod.group || "Unsortiert").split(' > ');
       let currentFolder = grouped[mod.type];
       if (!currentFolder) return; 
-
       pathParts.forEach((part: string) => {
-        if (!currentFolder._subfolders[part]) {
-          currentFolder._subfolders[part] = { _subfolders: {}, _items: [] };
-        }
+        if (!currentFolder._subfolders[part]) currentFolder._subfolders[part] = { _subfolders: {}, _items: [] };
         currentFolder = currentFolder._subfolders[part];
       });
       currentFolder._items.push(mod);
     });
-
     return { grouped, isSearching };
   }, [allModules, moduleSearch]);
 
-  const toggleFolder = (folderKey: string) => {
-    setOpenFolders(prev => ({ ...prev, [folderKey]: !prev[folderKey] }));
-  };
+  const toggleFolder = (key: string) => setOpenFolders(p => ({ ...p, [key]: !p[key] }));
 
   return (
-    <main className="min-h-screen p-4 md:p-8 bg-gray-900 text-gray-100 font-sans selection:bg-blue-500/30 overflow-hidden">
-      <div className="max-w-[1600px] mx-auto relative h-full">
+    <main className="h-screen p-2 bg-gray-900 text-gray-100 font-sans overflow-hidden">
+      {!selectedShip ? (
+        <div className="max-w-2xl mx-auto mt-20 text-center">
+          <h1 className="text-4xl font-black mb-6 text-gray-300">EVE <span className="text-blue-500">PYFA</span> WEB</h1>
+          <form onSubmit={fetchShips} className="flex gap-2 justify-center">
+            <input type="text" placeholder="Schiffsnamen eingeben..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="w-2/3 p-3 rounded bg-gray-800 border border-gray-700 text-sm outline-none focus:border-blue-500" />
+            <button type="submit" className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded text-sm font-bold">Suchen</button>
+          </form>
+          {loading && <p className="text-blue-400 mt-4 text-xs">Suche in Datenbank...</p>}
+          <div className="grid grid-cols-2 gap-2 mt-6">
+            {ships.map(ship => (
+              <div key={ship.id} onClick={() => handleShipClick(ship)} className="bg-gray-800 p-3 rounded hover:border-blue-500 border border-gray-700 cursor-pointer text-left">
+                <div className="font-bold text-sm">{ship.name}</div>
+                <div className="text-xs text-gray-500">{ship.group_name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2 h-full max-w-[1800px] mx-auto">
+          
+          {/* === LINKE SEITE: MODULE BROWSER === */}
+          <div className="w-[280px] bg-gray-800 border border-gray-700 flex flex-col h-full shadow-lg">
+            <div className="p-2 bg-gray-800 border-b border-gray-700 shrink-0 flex items-center justify-between">
+               <button onClick={() => setSelectedShip(null)} className="text-[10px] text-gray-400 hover:text-white uppercase tracking-wider">← Zurück</button>
+               <span className="text-[10px] font-bold text-gray-500">MARKET</span>
+            </div>
+            <div className="p-2 bg-gray-800 border-b border-gray-700 shrink-0">
+              <input type="text" placeholder="Search..." value={moduleSearch} onChange={(e) => setModuleSearch(e.target.value)} className="w-full p-1.5 rounded bg-gray-900 border border-gray-700 text-[11px] outline-none focus:border-blue-500" />
+            </div>
+            <div className="flex-grow overflow-y-auto custom-scrollbar p-1">
+              {['high', 'mid', 'low', 'rig'].map(slotType => {
+                const slotData = groupedModules.grouped[slotType];
+                if (!slotData || (slotData._items.length === 0 && Object.keys(slotData._subfolders).length === 0)) return null;
+                return (
+                  <div key={slotType} className="mb-2">
+                    <div className="text-[9px] font-bold text-gray-500 uppercase border-b border-gray-700 pb-0.5 mb-1 ml-1">{slotType} Slots</div>
+                    {Object.keys(slotData._subfolders).sort().map(g => (
+                      <RecursiveFolder key={g} name={g} folderData={slotData._subfolders[g]} isSearching={groupedModules.isSearching} openFolders={openFolders} toggleFolder={toggleFolder} equipModule={equipModule} pathKey={`${slotType}-${g}`} />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-        {selectedShip ? (
-          <div className="animate-fade-in flex flex-col h-[calc(100vh-4rem)]">
+          {/* === MITTE: FITTING ANSICHT === */}
+          <div className="flex-1 bg-gray-800/50 border border-gray-700 p-2 flex flex-col h-full shadow-lg overflow-hidden relative">
+            {isSimulating && <div className="absolute top-2 right-2 flex items-center gap-1 text-[10px] text-green-400 animate-pulse"><div className="w-2 h-2 bg-green-400 rounded-full"></div>Simulating</div>}
+            <div className="shrink-0 mb-2 px-2 border-b border-gray-700 pb-2">
+              <h2 className="text-xl font-bold text-white tracking-wide">{selectedShip.name}</h2>
+              <p className="text-blue-400 text-[10px] uppercase tracking-widest">{selectedShip.group_name}</p>
+            </div>
             
-            {/* Top Bar Navigation */}
-            <div className="flex justify-between items-center mb-4 shrink-0">
-              <button onClick={() => setSelectedShip(null)} className="text-blue-400 hover:text-blue-300 flex items-center gap-2 font-semibold text-sm uppercase tracking-widest">
-                ← Anderes Schiff suchen
-              </button>
-              
-              <div className="bg-gray-800 p-1 rounded-lg border border-gray-700 flex shadow-lg">
-                <button onClick={() => setViewMode('wheel')} className={`px-6 py-2 text-sm font-bold uppercase tracking-widest rounded transition-all ${viewMode === 'wheel' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>Wheel</button>
-                <button onClick={() => setViewMode('list')} className={`px-6 py-2 text-sm font-bold uppercase tracking-widest rounded transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}>Pyfa List</button>
+            <div className="flex-grow flex flex-col gap-2 min-h-0 overflow-y-auto custom-scrollbar px-1">
+              {selectedShip.high_slots! > 0 && <div className="flex flex-col shrink-0"><h3 className="text-[10px] font-bold text-gray-500 mb-0.5">HIGH SLOTS</h3>{renderSlotList("high", selectedShip.high_slots)}</div>}
+              {selectedShip.mid_slots! > 0 && <div className="flex flex-col shrink-0"><h3 className="text-[10px] font-bold text-gray-500 mb-0.5">MID SLOTS</h3>{renderSlotList("mid", selectedShip.mid_slots)}</div>}
+              {selectedShip.low_slots! > 0 && <div className="flex flex-col shrink-0"><h3 className="text-[10px] font-bold text-gray-500 mb-0.5">LOW SLOTS</h3>{renderSlotList("low", selectedShip.low_slots)}</div>}
+              {selectedShip.rig_slots! > 0 && <div className="flex flex-col shrink-0"><h3 className="text-[10px] font-bold text-gray-500 mb-0.5">RIG SLOTS</h3>{renderSlotList("rig", selectedShip.rig_slots)}</div>}
+            </div>
+          </div>
+
+          {/* === RECHTE SEITE: PYFA STATS SEITENLEISTE === */}
+          <div className="w-[300px] bg-gray-800 border border-gray-700 flex flex-col h-full shadow-xl overflow-hidden text-gray-200">
+            {/* Kopfzeile (Character) */}
+            <div className="p-1.5 border-b border-gray-700 bg-gray-900 flex justify-between items-center text-[11px] shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400">Character:</span>
+                <select className="bg-gray-800 border border-gray-700 text-white rounded outline-none py-0.5 px-1"><option>All 5</option></select>
+              </div>
+              <div className="flex gap-1 text-gray-400">
+                <button className="hover:text-white" title="Refresh">↻</button>
+                <button className="hover:text-white" title="Book">📖</button>
               </div>
             </div>
 
-            {/* 3 Columns Layout */}
-            <div className="flex flex-col xl:flex-row gap-6 justify-between items-stretch flex-grow overflow-hidden">
+            <div className="flex-grow overflow-y-auto custom-scrollbar">
               
-              {/* === LINKE SEITE: MODULE BROWSER === */}
-              <div className="w-full xl:w-1/4 bg-gray-800/80 border border-gray-700 rounded-lg shadow-xl flex flex-col h-full overflow-hidden">
-                <div className="p-4 bg-gray-800 border-b border-gray-700 shrink-0">
-                  <h2 className="text-sm font-bold text-gray-200 uppercase tracking-widest mb-3">Hardware ({allModules.length})</h2>
-                  <input 
-                    type="text" 
-                    placeholder="Suchen (Laser, Shield, Web)..." 
-                    value={moduleSearch}
-                    onChange={(e) => setModuleSearch(e.target.value)}
-                    className="w-full p-2 rounded bg-gray-900 border border-gray-600 focus:border-blue-500 outline-none text-sm"
-                  />
+              {/* 1. Resources */}
+              <CollapsiblePanel title="Resources">
+                {/* Slot Icons Row */}
+                <div className="flex justify-around items-center border-b border-gray-700 pb-1 mb-1 text-[11px] text-gray-400 font-mono">
+                  <span title="High">🔭 {fittedModules.high.filter((x:any)=>x).length}/{selectedShip.high_slots}</span>
+                  <span title="Mid">📡 {fittedModules.mid.filter((x:any)=>x).length}/{selectedShip.mid_slots}</span>
+                  <span title="Low">⚙️ {fittedModules.low.filter((x:any)=>x).length}/{selectedShip.low_slots}</span>
+                  <span title="Rig">🔧 {fittedModules.rig.filter((x:any)=>x).length}/{selectedShip.rig_slots}</span>
                 </div>
-                
-                <div className="flex-grow overflow-y-auto custom-scrollbar p-2">
-                  {allModules.length === 0 && <p className="text-gray-500 text-center text-xs mt-4">Lade EVE Module...</p>}
+                {/* Resource Bars */}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-1">
+                  <ResourceBar icon="🖩" used={cpuUsed} total={cpuTotal} unit="tf" percent={cpuPercent} />
+                  <ResourceBar icon="⚡" used={pgUsed} total={pgTotal} unit="MW" percent={pgPercent} />
+                  <ResourceBar icon="🎛️" used={calUsed} total={calTotal} unit="pt" percent={calPercent} />
+                  <ResourceBar icon="📡" used={bwUsed} total={bwTotal} unit="mbit/s" percent={bwPercent} />
                   
-                  {['high', 'mid', 'low', 'rig'].map(slotType => {
-                    const slotData = groupedModules.grouped[slotType];
-                    if (!slotData) return null;
-
-                    const getCount = (fd: any): number => {
-                      let count = fd._items.length;
-                      for (const key in fd._subfolders) count += getCount(fd._subfolders[key]);
-                      return count;
-                    };
-                    const totalSlotCount = getCount(slotData);
-
-                    if (totalSlotCount === 0) return null;
-
-                    return (
-                      <div key={slotType} className="mb-4">
-                        <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-700 pb-1 mb-2 ml-1">
-                          {slotType.toUpperCase()} SLOTS ({totalSlotCount})
-                        </div>
-                        
-                        {Object.keys(slotData._subfolders).sort().map(groupName => (
-                          <RecursiveFolder
-                            key={groupName}
-                            name={groupName}
-                            folderData={slotData._subfolders[groupName]}
-                            isSearching={groupedModules.isSearching}
-                            openFolders={openFolders}
-                            toggleFolder={toggleFolder}
-                            equipModule={equipModule}
-                            pathKey={`${slotType}-${groupName}`}
-                          />
-                        ))}
-                        {slotData._items.map((module: any) => (
-                          <div
-                            key={module.id}
-                            onClick={() => equipModule(module)}
-                            className="flex items-center gap-2 p-1.5 bg-gray-900/30 hover:bg-blue-900/40 rounded cursor-pointer group ml-1"
-                          >
-                            <div className="text-xs group-hover:scale-110 transition-transform">
-                              {getModuleIcon(module.type, module.name)}
-                            </div>
-                            <p className="text-[11px] font-semibold text-gray-400 group-hover:text-blue-300 truncate">{module.name}</p>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-
-              {/* === MITTE: FITTING ANSICHT === */}
-              <div className="w-full xl:w-2/4 flex justify-center h-full overflow-hidden">
-                
-                {viewMode === 'wheel' ? (
-                  <div className="relative w-[360px] h-[360px] md:w-[600px] md:h-[600px] flex-shrink-0 bg-gray-900 rounded-full shadow-[0_0_80px_rgba(0,0,0,0.8)] border border-gray-800 animate-fade-in self-center">
-                    <div className="absolute inset-0 m-auto w-32 h-32 md:w-48 md:h-48 bg-gray-800/80 rounded-full border border-gray-600 flex flex-col items-center justify-center shadow-lg z-10">
-                      <h2 className="text-lg md:text-2xl font-bold text-white text-center leading-tight px-2 drop-shadow-md">{selectedShip.name}</h2>
-                      <p className="text-[10px] md:text-xs text-blue-400 mt-1 uppercase tracking-widest">{selectedShip.group_name}</p>
-                      {isSimulating && <p className="text-green-400 text-[10px] mt-2 animate-pulse uppercase tracking-widest">Simulating...</p>}
-                    </div>
-
-                    <svg viewBox="0 0 600 600" className="absolute inset-0 w-full h-full pointer-events-none">
-                      <line x1="300" y1="50" x2="300" y2="550" stroke="#374151" strokeWidth="1" opacity="0.3" />
-                      <line x1="50" y1="300" x2="550" y2="300" stroke="#374151" strokeWidth="1" opacity="0.3" />
-                      <circle cx="300" cy="300" r="150" stroke="#374151" strokeWidth="1" fill="none" opacity="0.2" />
-
-                      <SvgSlotGroup activeCount={selectedShip.high_slots} centerAngle={0} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-gray-400" iconType="high" onSlotClick={!isSimulating ? unequipModule : null} fittedModules={fittedModules} />
-                      <SvgSlotGroup activeCount={selectedShip.mid_slots} centerAngle={90} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-blue-500/80" iconType="mid" onSlotClick={!isSimulating ? unequipModule : null} fittedModules={fittedModules} />
-                      <SvgSlotGroup activeCount={selectedShip.low_slots} centerAngle={180} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-green-500/80" iconType="low" onSlotClick={!isSimulating ? unequipModule : null} fittedModules={fittedModules} />
-                      <SvgSlotGroup activeCount={selectedShip.rig_slots} centerAngle={-60} innerRadius={215} outerRadius={265} activeFill="fill-gray-800" activeStroke="stroke-yellow-600/80" iconType="rig" onSlotClick={!isSimulating ? unequipModule : null} fittedModules={fittedModules} />
-
-                      <SvgHardpointGroup activeCount={selectedShip.turret_slots} centerAngle={-23} radius={200} activeFill="fill-red-900" activeStroke="stroke-red-500" />
-                      <SvgHardpointGroup activeCount={selectedShip.launcher_slots} centerAngle={23} radius={200} activeFill="fill-orange-900" strokeClass="stroke-orange-500" />
-
-                      <StatArc startAngle={35} endAngle={70} radius={280} strokeClass={cpuUsed > (selectedShip.cpu || 0) ? "stroke-red-500" : "stroke-blue-500"} textColorClass="fill-blue-400" text={`CPU ${cpuUsed.toFixed(1)} / ${selectedShip.cpu} tf`} />
-                      <StatArc startAngle={110} endAngle={145} radius={280} strokeClass={pgUsed > (selectedShip.powergrid || 0) ? "stroke-yellow-500" : "stroke-red-600"} textColorClass="fill-red-400" text={`PG ${pgUsed.toFixed(1)} / ${selectedShip.powergrid} MW`} />
-                    </svg>
+                  {/* Cargo in voller Breite oder als Teil des Grids */}
+                  <div className="col-span-2">
+                    <ResourceBar icon="📦" used={simStats?.cargo_capacity || selectedShip.cargo_capacity || 0} total={selectedShip.cargo_capacity || 0} unit="m³" percent={((simStats?.cargo_capacity || selectedShip.cargo_capacity || 0) / (selectedShip.cargo_capacity||1))*100} />
                   </div>
-                ) : (
-                  <div className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4 animate-fade-in shadow-xl flex flex-col h-full overflow-hidden">
-                    <div className="flex justify-between items-start mb-2 border-b border-gray-700 pb-2 shrink-0">
-                      <div>
-                        <h2 className="text-3xl font-black text-white tracking-wide">{selectedShip.name}</h2>
-                        <p className="text-blue-400 text-sm uppercase tracking-widest">{selectedShip.group_name}</p>
-                        {isSimulating && <p className="text-green-400 text-[10px] mt-1 animate-pulse uppercase tracking-widest">Simulating...</p>}
-                      </div>
-                      <div className="text-right bg-gray-900 p-2 rounded border border-gray-700 hidden lg:block">
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Ressourcen</div>
-                        <div className="text-xs text-gray-300">CPU: <span className={`font-mono ${cpuUsed > (selectedShip.cpu || 0) ? 'text-red-500' : 'text-blue-400'}`}>{cpuUsed.toFixed(1)} / {selectedShip.cpu}</span></div>
-                        <div className="text-xs text-gray-300 mt-1">PG: <span className={`font-mono ${pgUsed > (selectedShip.powergrid || 0) ? 'text-red-500' : 'text-red-400'}`}>{pgUsed.toFixed(1)} / {selectedShip.powergrid}</span></div>
-                      </div>
-                    </div>
+                </div>
+              </CollapsiblePanel>
+
+              {/* 2. Resistances */}
+              <CollapsiblePanel title="Resistances" extraText={`(Effective HP: ${simStats?.ehp?.toLocaleString(undefined, {maximumFractionDigits:0}) || "0"})`}>
+                <div className="grid grid-cols-[auto_1fr_1fr_1fr_1fr_auto] gap-x-1 gap-y-1 text-[10px] items-center text-center">
+                  <div className="w-4"></div>
+                  <div className="text-blue-400">⚡</div>
+                  <div className="text-red-400">🔥</div>
+                  <div className="text-gray-400">💥</div>
+                  <div className="text-orange-400">🎇</div>
+                  <div className="border border-gray-600 bg-gray-800 rounded px-1">EHP</div>
+
+                  <div className="text-blue-300" title="Shield">🛡️</div>
+                  <ResCell value={res.shield.em} color="bg-blue-600" />
+                  <ResCell value={res.shield.therm} color="bg-red-600" />
+                  <ResCell value={res.shield.kin} color="bg-gray-500" />
+                  <ResCell value={res.shield.exp} color="bg-orange-500" />
+                  <div className="font-mono text-right pr-1">{res.shield.hp.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+
+                  <div className="text-gray-300" title="Armor">🧱</div>
+                  <ResCell value={res.armor.em} color="bg-blue-600" />
+                  <ResCell value={res.armor.therm} color="bg-red-600" />
+                  <ResCell value={res.armor.kin} color="bg-gray-500" />
+                  <ResCell value={res.armor.exp} color="bg-orange-500" />
+                  <div className="font-mono text-right pr-1">{res.armor.hp.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+
+                  <div className="text-orange-300" title="Hull">📦</div>
+                  <ResCell value={res.hull.em} color="bg-blue-600" />
+                  <ResCell value={res.hull.therm} color="bg-red-600" />
+                  <ResCell value={res.hull.kin} color="bg-gray-500" />
+                  <ResCell value={res.hull.exp} color="bg-orange-500" />
+                  <div className="font-mono text-right pr-1">{res.hull.hp.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                </div>
+              </CollapsiblePanel>
+
+              {/* 3. Recharge rates */}
+              <CollapsiblePanel title="Recharge rates" defaultOpen={true}>
+                <div className="grid grid-cols-4 text-[10px] text-center gap-1 font-mono pt-1">
+                  <div className="text-blue-300 text-left pl-1">🛡️ Pas.</div>
+                  <div className="text-white">{simStats?.passive_shield?.toFixed(1) || "0.0"}</div>
+                  <div className="text-gray-500">HP/s</div>
+                  <div></div>
+                  
+                  <div className="text-blue-300 text-left pl-1">🛡️ Act.</div>
+                  <div className="text-white">{simStats?.active_shield?.toFixed(1) || "0.0"}</div>
+                  <div className="text-gray-500">HP/s</div>
+                  <div></div>
+                  
+                  <div className="text-gray-300 text-left pl-1">🧱 Act.</div>
+                  <div className="text-white">{simStats?.active_armor?.toFixed(1) || "0.0"}</div>
+                  <div className="text-gray-500">HP/s</div>
+                  <div></div>
+                  
+                  <div className="text-orange-300 text-left pl-1">📦 Act.</div>
+                  <div className="text-white">{simStats?.active_hull?.toFixed(1) || "0.0"}</div>
+                  <div className="text-gray-500">HP/s</div>
+                  <div></div>
+                </div>
+              </CollapsiblePanel>
+
+              {/* 4. Firepower */}
+              <CollapsiblePanel title="Firepower">
+                <div className="flex justify-between items-center text-[10px] font-mono px-2 py-1">
+                  <div className="flex flex-col items-center">
+                    <span className="text-gray-400">Weapon</span>
+                    <span className="text-white">{simStats?.dps?.toFixed(1) || "0.0"} DPS</span>
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <span className="text-gray-400">Drone</span>
+                    <span className="text-white">0.0 DPS</span>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-gray-400">Volley: <span className="text-white">{simStats?.volley || "0"}</span></span>
+                    <span className="text-gray-400">DPS: <span className="text-white">{simStats?.dps?.toFixed(1) || "0.0"}</span></span>
+                  </div>
+                </div>
+              </CollapsiblePanel>
+
+              {/* 5. Remote Reps (Mocked) */}
+              <CollapsiblePanel title="Remote Reps" defaultOpen={false}>
+                <div className="flex justify-around text-[10px] font-mono text-gray-400 py-1">
+                  <span>🔋 0 GJ/s</span><span>🛡️ 0 HP/s</span><span>🧱 0 HP/s</span><span>📦 0 HP/s</span>
+                </div>
+              </CollapsiblePanel>
+
+              {/* 6. Capacitor */}
+              <CollapsiblePanel title="Capacitor" defaultOpen={true}>
+                <div className="flex justify-between text-[10px] font-mono px-2 py-1">
+                  <div className="flex flex-col">
+                    <span className="text-gray-400">Total: <span className="text-white">{simStats?.cap_capacity?.toFixed(0) || selectedShip?.cap_capacity || 0} GJ</span></span>
                     
-                    <div className="flex-grow flex flex-col justify-evenly gap-2 min-h-0 overflow-hidden">
-                      {renderListCategory("High Slots", "high", selectedShip.high_slots)}
-                      {renderListCategory("Mid Slots", "mid", selectedShip.mid_slots)}
-                      {renderListCategory("Low Slots", "low", selectedShip.low_slots)}
-                      {renderListCategory("Rig Slots", "rig", selectedShip.rig_slots)}
-                    </div>
+                    <span className="text-gray-400">Lasts <span className={simStats?.cap_is_stable === false ? "text-red-400" : "text-green-400"}>
+                      {simStats ? (
+                        simStats.cap_is_stable 
+                          ? "Stable" 
+                          : `${Math.floor(simStats.cap_depletes_in / 60)}m ${Math.floor(simStats.cap_depletes_in % 60)}s`
+                      ) : "Stable"}
+                    </span></span>
                   </div>
-                )}
-              </div>
-
-              {/* === RECHTE SEITE: NEUE STATS PANELS === */}
-              <div className="w-full xl:w-1/4 flex flex-col h-full overflow-y-auto custom-scrollbar pr-2 pb-4">
-                
-                <CollapsiblePanel title="Kampf (Combat)" defaultOpen={true}>
-                  <StatRow label="Effective Hitpoints" value={simStats?.ehp?.toLocaleString() || "0"} unit="EHP" highlight={true} />
-                  <StatRow label="Damage Per Second" value={simStats?.dps?.toLocaleString() || "0"} unit="DPS" highlight={true} />
-                </CollapsiblePanel>
-
-                <CollapsiblePanel title="Fitting (Ressourcen)" defaultOpen={true}>
-                  <StatRow label="CPU" value={`${cpuUsed} / ${simStats ? simStats.cpu_total : selectedShip.cpu || 0}`} unit="tf" />
-                  <StatRow label="Powergrid" value={`${pgUsed} / ${simStats ? simStats.powergrid_total : selectedShip.powergrid || 0}`} unit="MW" />
-                  <StatRow label="Calibration" value={selectedShip.calibration || 0} unit="tf" />
-                </CollapsiblePanel>
-
-                <CollapsiblePanel title="Drohnen (Drones)" defaultOpen={true}>
-                  <StatRow label="Bandbreite" value={`${simStats ? simStats.drone_bandwidth_used : "0"} / ${simStats ? simStats.drone_bandwidth_total : "0"}`} unit="Mbit/sec" />
-                  <StatRow label="Drohnenhangar" value={`${simStats ? simStats.dronebay_used : "0"} / ${simStats ? simStats.dronebay_total : "0"}`} unit="m³" />
-                </CollapsiblePanel>
-
-                <CollapsiblePanel title="Energiespeicher (Capacitor)" defaultOpen={true}>
-                  <StatRow label="Kapazität" value={simStats ? simStats.cap_capacity?.toLocaleString() : selectedShip.cap_capacity?.toLocaleString()} unit="GJ" />
-                  <StatRow label="Aufladezeit" value={simStats ? (simStats.cap_recharge / 1000).toFixed(1) : selectedShip.cap_recharge ? (selectedShip.cap_recharge / 1000).toFixed(1) : "0"} unit="s" />
-                </CollapsiblePanel>
-
-                <CollapsiblePanel title="Verteidigung (Tank)" defaultOpen={true}>
-                  <div className="flex justify-between items-center mb-1 pr-1">
-                    <div className="w-16"></div> 
-                    <div className="w-16 text-right text-gray-400 text-xs font-bold pr-2">HP</div>
-                    <div className="flex gap-1">
-                      <div className="w-8 lg:w-10 text-center text-blue-400 text-[10px] font-bold">EM</div>
-                      <div className="w-8 lg:w-10 text-center text-red-400 text-[10px] font-bold">THR</div>
-                      <div className="w-8 lg:w-10 text-center text-gray-300 text-[10px] font-bold">KIN</div>
-                      <div className="w-8 lg:w-10 text-center text-orange-400 text-[10px] font-bold">EXP</div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                    <span className="text-blue-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Schild</span>
-                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">
-                      {simStats ? simStats.shield_hp?.toLocaleString() : selectedShip.shield_hp?.toLocaleString() || "0"}
+                  
+                  <div className="flex flex-col items-end">
+                    <span className={simStats?.cap_delta < 0 ? "text-red-400 text-[11px]" : "text-green-400 text-[11px]"}>
+                      {simStats?.cap_delta > 0 
+                        ? `+${simStats.cap_delta.toFixed(1)} GJ/s` 
+                        : `${simStats?.cap_delta?.toFixed(1) || "+0.0"} GJ/s`}
                     </span>
-                    <div className="flex gap-1">
-                      <ResCell value={shieldEm} color="bg-blue-600" />
-                      <ResCell value={shieldTherm} color="bg-red-600" />
-                      <ResCell value={shieldKin} color="bg-gray-500" />
-                      <ResCell value={shieldExpl} color="bg-orange-500" />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                    <span className="text-gray-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Armor</span>
-                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">
-                      {simStats ? simStats.armor_hp?.toLocaleString() : selectedShip.armor_hp?.toLocaleString() || "0"}
+                    <span className="text-gray-400">
+                      {simStats ? (
+                        simStats.cap_is_stable ? `${simStats.cap_stable_fraction.toFixed(1)}%` : "0.0%"
+                      ) : "100%"}
                     </span>
-                    <div className="flex gap-1">
-                      <ResCell value={armorEm} color="bg-blue-600" />
-                      <ResCell value={armorTherm} color="bg-red-600" />
-                      <ResCell value={armorKin} color="bg-gray-500" />
-                      <ResCell value={armorExpl} color="bg-orange-500" />
-                    </div>
                   </div>
-
-                  <div className="flex items-center justify-between hover:bg-gray-700/50 p-1 rounded transition-colors">
-                    <span className="text-orange-300 text-[10px] xl:text-xs font-bold uppercase w-14 xl:w-16 truncate pl-1">Hull</span>
-                    <span className="text-white font-mono text-xs xl:text-sm w-16 text-right pr-2">
-                      {simStats ? simStats.hull_hp?.toLocaleString() : selectedShip.hull_hp?.toLocaleString() || "0"}
-                    </span>
-                    <div className="flex gap-1">
-                      <ResCell value={hullEm} color="bg-blue-600" />
-                      <ResCell value={hullTherm} color="bg-red-600" />
-                      <ResCell value={hullKin} color="bg-gray-500" />
-                      <ResCell value={hullExpl} color="bg-orange-500" />
-                    </div>
-                  </div>
-                </CollapsiblePanel>
-
-                <CollapsiblePanel title="Navigation" defaultOpen={true}>
-                  <StatRow label="Max. Geschwindigkeit" value={simStats?.max_velocity?.toLocaleString() || "0"} unit="m/s" />
-                  <StatRow label="Ausrichtezeit (Align)" value={simStats?.align_time?.toLocaleString() || "0"} unit="s" />
-                  <StatRow label="Agility Factor" value={simStats?.agility_factor?.toLocaleString() || "0"} unit="x" />
-                  <StatRow label="Masse" value={simStats?.mass?.toLocaleString() || selectedShip.mass?.toLocaleString() || "0"} unit="kg" />
-                </CollapsiblePanel>
-
-                <CollapsiblePanel title="Chassis" defaultOpen={false}>
-                  <StatRow label="Laderaum (Cargo)" value={simStats ? simStats.cargo_capacity?.toLocaleString() : selectedShip.cargo_capacity?.toLocaleString()} unit="m³" />
-                </CollapsiblePanel>
-                
-              </div>
-
-            </div>
-          </div>
-        ) : (
-          <div className="max-w-3xl mx-auto mt-20">
-            <h1 className="text-5xl font-black mb-10 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-gray-400 tracking-tighter text-center">
-              EVE <span className="text-gray-200">PYFA</span> WEB
-            </h1>
-            <form onSubmit={fetchShips} className="mb-10 flex gap-2">
-              <input type="text" placeholder="Schiffsnamen eingeben (z.B. Drake)..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} className="flex-grow p-4 rounded bg-gray-800 border border-gray-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-lg text-center tracking-wide" />
-              <button type="submit" className="bg-blue-600 hover:bg-blue-500 px-8 py-4 rounded font-bold text-white tracking-widest uppercase shadow-lg">Suchen</button>
-            </form>
-            {loading && <p className="text-blue-400 animate-pulse text-center tracking-widest uppercase text-sm font-bold">Initialisiere Datenbank-Uplink...</p>}
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {ships.map(ship => (
-                <div key={ship.id} onClick={() => handleShipClick(ship)} className="bg-gray-800 border border-gray-700 p-4 rounded hover:border-blue-500 cursor-pointer group flex justify-between items-center shadow-md">
-                  <span className="text-lg font-bold text-gray-200 group-hover:text-blue-400">{ship.name}</span>
-                  <span className="text-gray-500 text-xs uppercase tracking-widest">{ship.group_name}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+              </CollapsiblePanel>
 
-      {pickerOpen && activeSlot && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[100] backdrop-blur-sm">
-          <div className="bg-gray-800 border border-gray-600 p-6 rounded-lg w-96 max-w-full shadow-2xl">
-            <h2 className="text-xl font-bold text-white mb-4 uppercase tracking-widest border-b border-gray-700 pb-2">
-              Modul für {activeSlot.type.toUpperCase()} Slot {activeSlot.index + 1}
-            </h2>
-            <p className="text-gray-400 text-sm mb-4">Bitte wähle ein Modul aus der linken Hardware-Leiste aus. Klicke dazu einfach auf ein Modul in der Liste.</p>
-            <button 
-              className="w-full bg-gray-700 hover:bg-gray-600 p-3 text-white rounded transition-colors tracking-widest uppercase text-sm font-bold"
-              onClick={() => setPickerOpen(false)}
-            >
-              Schließen
-            </button>
+              {/* 7. Targeting & Misc */}
+              <CollapsiblePanel title="Targeting & Misc">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 px-2 py-1 text-[10px] font-mono">
+                  <div className="flex justify-between"><span className="text-gray-400">Targets:</span><span className="text-white">{simStats?.max_targets || "0"}</span></div>
+                  <div className="flex justify-between border-l border-gray-700 pl-2"><span className="text-gray-400">Speed:</span><span className="text-white">{simStats?.max_velocity?.toFixed(1) || "0"} m/s</span></div>
+                  
+                  <div className="flex justify-between"><span className="text-gray-400">Range:</span><span className="text-white">{simStats?.lock_range?.toFixed(1) || "0"} km</span></div>
+                  <div className="flex justify-between border-l border-gray-700 pl-2"><span className="text-gray-400">Align time:</span><span className="text-white">{simStats?.align_time?.toFixed(2) || "0"} s</span></div>
+                  
+                  <div className="flex justify-between"><span className="text-gray-400">Scan res.:</span><span className="text-white">{simStats?.scan_res?.toFixed(0) || "0"} mm</span></div>
+                  <div className="flex justify-between border-l border-gray-700 pl-2"><span className="text-gray-400">Signature:</span><span className="text-white">{simStats?.sig_radius?.toFixed(0) || "0"} m</span></div>
+                  
+                  <div className="flex justify-between"><span className="text-gray-400">Sensor str.:</span><span className="text-white">{simStats?.sensor_str?.toFixed(1) || "0"}</span></div>
+                  <div className="flex justify-between border-l border-gray-700 pl-2"><span className="text-gray-400">Warp Speed:</span><span className="text-white">{simStats?.warp_speed?.toFixed(2) || "0"} AU/s</span></div>
+                  
+                  <div className="flex justify-between"><span className="text-gray-400">Drone range:</span><span className="text-white">{simStats?.drone_range?.toFixed(1) || "0"} km</span></div>
+                  <div className="flex justify-between border-l border-gray-700 pl-2"><span className="text-gray-400">Cargo:</span><span className="text-white">{simStats?.cargo_capacity || selectedShip.cargo_capacity || 0} m³</span></div>
+                </div>
+              </CollapsiblePanel>
+
+              {/* 8. Price (Mocked) */}
+              <CollapsiblePanel title="Price" defaultOpen={false}>
+                <div className="grid grid-cols-3 gap-2 px-2 py-1 text-[10px] font-mono text-center">
+                  <div><span className="text-gray-400 block">Ship</span>0 ISK</div>
+                  <div><span className="text-gray-400 block">Fittings</span>0 ISK</div>
+                  <div><span className="text-gray-400 block">Character</span>0 ISK</div>
+                  <div><span className="text-gray-400 block">Drones</span>0 ISK</div>
+                  <div><span className="text-gray-400 block">Cargo bay</span>0 ISK</div>
+                  <div className="text-blue-300"><span className="text-gray-400 block">Total</span>0 ISK</div>
+                </div>
+              </CollapsiblePanel>
+
+            </div>
           </div>
         </div>
       )}
